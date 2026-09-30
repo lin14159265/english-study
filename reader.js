@@ -37,7 +37,7 @@
       lineHeight:Number.isFinite(saved.lineHeight) ? Math.max(1.5,Math.min(2.5,saved.lineHeight)) : defaults.lineHeight,
       fontFamily:saved.fontFamily === 'sans' ? 'sans' : 'serif', highlight:saved.highlight !== false, focus:saved.focus === true
     },
-    current:idForKey(raw.currentKey) || (validId(raw.current) ? raw.current : 1),
+    current:typeof raw.currentKey==='string' ? (idForKey(raw.currentKey) || 1) : (validId(raw.current) ? raw.current : 1),
     read:Array.isArray(raw.readKeys) ? raw.readKeys.map(idForKey).filter(Boolean) : Array.isArray(raw.read) ? raw.read.filter(validId) : [],
     review:Array.isArray(raw.review) ? [...new Set(raw.review.filter(w => typeof w === 'string' && data.words[w]))] : [],
     positions:raw.positionKeys && typeof raw.positionKeys === 'object' ? Object.fromEntries(Object.entries(raw.positionKeys).map(([k,v])=>[idForKey(k),v]).filter(([id])=>id)) : raw.positions && typeof raw.positions === 'object' ? raw.positions : {}
