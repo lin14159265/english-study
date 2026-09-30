@@ -60,6 +60,7 @@ test('multiple occurrences retain separate meanings and only the first is strong
   p.articles[0].uses.push({...p.articles[0].uses[0],occurrence:2,sense:'测量（再次）'});
   const r=core.validate(p); assert.equal(r.ok,true);
   const w=r.compiled.words[p.id+'::measure']; assert.equal(w.uses.length,2); assert.notEqual(w.uses[0].uid,w.uses[1].uid);
+  assert.equal(w.uses[1].start,p.articles[0].paragraphs[0].en.lastIndexOf('measured'));
   assert.match(r.compiled.articles[0].paragraphs[0],/<span class="target target-repeat"/);
 });
 test('rejects executable markup and escapes other imported text',()=>{
@@ -76,7 +77,7 @@ test('batch scoping keeps a repeated lemma and its different meanings independen
   assert.equal(combined[example.id+'::measure'].allowed,'v. 测量');
   assert.equal(combined[p.id+'::measure'].allowed,'n. 措施');
 });
-test('legacy material remains intact and can combine with a new package',async()=>{
+test('legacy material remains intact when browser storage is unavailable',async()=>{
   const base={window:{}}; vm.runInNewContext(fs.readFileSync(__dirname+'/../content.js','utf8'),base);
   const before=JSON.stringify(base.window.READING_DATA);
   const ctx={window:{StudyPack:core},document:{getElementById:()=>null},setTimeout,clearTimeout,indexedDB:{open(){throw new Error('disabled');}}};

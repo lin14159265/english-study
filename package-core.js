@@ -63,7 +63,7 @@
         if (spans[pi].some(s=>match.start < s.end && match.end > s.start)) { fail(`${where} 与另一条用词记录重复或重叠。`); return; }
         const uid = `${a.id}:${pi}:${match.start}`;
         spans[pi].push({...match,lemma,uid});
-        words[lemma].uses.push({article:ai+1,paragraph:pi,form:match.form,sense:u.sense,uid});
+        words[lemma].uses.push({article:ai+1,paragraph:pi,form:match.form,sense:u.sense,uid,start:match.start});
       });
       const seen = new Set(), paragraphWords = [];
       const paragraphs = plain.map((p,pi) => {

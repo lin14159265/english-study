@@ -161,6 +161,10 @@
     if (!u) return '';
     const p = data.articles[u.article-1].plain[u.paragraph];
     const sentences = p.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [p];
+    if (Number.isInteger(u.start)) {
+      let offset = 0;
+      for (const sentence of sentences) { const end = offset+sentence.length; if(u.start>=offset&&u.start<end)return sentence.trim(); offset=end; }
+    }
     const form = u.form.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
     const pat = new RegExp(`\\b${form}\\b`,'i');
     return (sentences.find(s => pat.test(s)) || p).trim();
