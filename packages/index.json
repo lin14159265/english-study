@@ -1,0 +1,4 @@
+---
+layout: null
+---
+{"files":[{% assign separator = '' %}{% assign files = site.static_files | sort: 'path' %}{% for file in files %}{% if file.path contains '/packages/' and file.extname == '.json' %}{{ separator }}{"path":{{ file.path | relative_url | jsonify }},"updated":{{ file.modified_time | date: '%s' | jsonify }}}{% assign separator = ',' %}{% endif %}{% endfor %}]}

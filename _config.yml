@@ -1,0 +1,4 @@
+baseurl: "/english-study"
+exclude:
+  - tests
+  - IMPORT.md

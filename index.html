@@ -8,9 +8,11 @@
   <title>English Study · 语境阅读</title>
   <script>try{let s=JSON.parse(localStorage.getItem('english-study.reader.v1')||'{}');let t=s.settings?.theme||'system';document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;}catch{}</script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2322685f'/%3E%3Cpath d='M7 8h7l2 2 2-2h7v16h-7l-2 2-2-2H7z' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M16 10v16' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reader.css?v=20260930-2">
+  <link rel="stylesheet" href="reader.css?v=20260930-import-1">
   <script defer src="content.js?v=20260930-1"></script>
-  <script defer src="reader.js?v=20260930-1"></script>
+  <script defer src="package-core.js?v=20260930-import-1"></script>
+  <script defer src="imports.js?v=20260930-import-1"></script>
+  <script defer src="reader.js?v=20260930-import-1"></script>
 </head>
 <body>
   <a class="skip-link" href="#reader">跳到正文</a>
@@ -18,14 +20,16 @@
   <aside id="sidebar" class="sidebar" aria-label="文章目录">
     <div class="brand"><span>English Study</span><small>语境阅读</small><button id="closeDirectory" class="icon-button mobile-only" aria-label="关闭目录" data-icon="x"></button></div>
     <label class="search-box"><span data-icon="search"></span><input id="articleSearch" type="search" placeholder="搜索文章" aria-label="搜索文章"></label>
+    <label class="batch-filter" for="batchFilter">资料批次<select id="batchFilter"><option value="all">全部资料</option><option value="original">原始 1000 词资料</option></select></label>
     <div class="directory-heading"><h2>文章目录</h2><span id="readCount">0 / 25 已读</span></div>
     <nav id="articleList" aria-label="选择文章"></nav>
-    <div class="sidebar-foot"><span>今日词表 · 1000 词</span><button id="aboutButton">关于这份材料</button></div>
+    <div class="sidebar-foot"><span id="libraryCount">1000 个目标词条</span><button id="aboutButton">材料说明</button></div>
   </aside>
   <header class="topbar">
     <button id="directoryButton" class="icon-button" data-icon="book" aria-label="打开文章目录" title="文章目录"></button>
     <span class="mobile-brand">English Study</span>
     <div class="topbar-actions">
+      <button id="importButton" class="secondary-button import-button" aria-label="导入与资料管理" title="导入与资料管理" data-icon-before="plus"><span>导入资料</span></button>
       <button id="focusButton" class="icon-button" data-icon="focus" aria-label="进入专注阅读" aria-pressed="false" title="专注阅读"></button>
       <button id="themeButton" class="icon-button" data-icon="moon" aria-label="切换深色模式" title="切换深色模式"></button>
       <button id="settingsButton" class="icon-button" data-icon="settings" aria-label="阅读设置" title="阅读设置"></button>
@@ -65,6 +69,18 @@
     <div class="settings-footer"><button type="button" id="resetSettings" class="text-button">恢复默认设置</button><button class="primary-button" value="done">完成</button></div>
   </form><p class="settings-note">设置、已读标记和复习词保存在当前浏览器中。</p></dialog>
   <dialog id="aboutDialog" class="settings-dialog" aria-labelledby="aboutTitle"><div class="dialog-heading"><h2 id="aboutTitle">关于这份材料</h2><button class="icon-button close-dialog" data-icon="x" aria-label="关闭材料说明"></button></div><p>这份材料来自 2026 年 9 月 29 日导出的 1000 词词表，包含 25 篇原创语境短文，覆盖 999 词。文章是训练情境，非真实新闻报道。</p><p>英文正文、中文参考意译和词表义项均保留。点击目标词，查看已核查的本篇用义；在“本篇词汇”中切换到“全部 1000 词”，可搜索完整词表。</p><p><strong lang="en">desirability</strong> 因原词表的“愿望，欲求”释义存在歧义，未强行用于正文，仍保留在完整词表中。</p><p>阅读位置、已读标记和复习词保存在当前浏览器。更换设备、清除浏览器数据或使用无痕窗口时不会自动同步。</p><p>快捷键：Alt + ← / → 切换文章，Esc 关闭辅助窗口。</p></dialog>
+  <dialog id="libraryDialog" class="settings-dialog library-dialog" aria-labelledby="libraryTitle">
+    <div class="dialog-heading"><div><small class="field-label">READING LIBRARY</small><h2 id="libraryTitle">导入与资料</h2></div><button class="icon-button close-dialog" data-icon="x" aria-label="关闭导入与资料"></button></div>
+    <p class="library-intro">把新的词表文章整理成一份资料包，后续添加内容无需修改网页代码。</p>
+    <section class="import-section" aria-labelledby="localImportTitle"><h3 id="localImportTitle">1. 导入预览</h3><p>选择 AI 生成的 JSON，检查后保存到当前浏览器。</p>
+      <label class="file-drop" for="packFile"><strong>选择 .json 资料包</strong><span>英文文章、逐段译文和用词记录 · 最大 10 MB</span><input id="packFile" type="file" accept=".json,application/json"></label>
+      <details class="paste-details"><summary>也可以粘贴 JSON 文本</summary><textarea id="packPaste" rows="7" spellcheck="false" aria-label="资料包 JSON 文本" placeholder="粘贴完整 JSON，不含代码围栏"></textarea><button id="previewPasted" class="secondary-button">校验并预览</button></details>
+      <div id="importPreview" class="import-preview" aria-live="polite" hidden></div><button id="confirmImport" class="primary-button" disabled>确认导入到本机</button>
+      <p id="storageStatus" class="import-notice" hidden></p>
+    </section>
+    <section class="import-section" aria-labelledby="publishTitle"><h3 id="publishTitle">2. 在所有设备上阅读</h3><p>预览通过后，把同一 JSON 上传到 GitHub 的 <strong>packages</strong> 文件夹，再点击 <strong>Commit changes</strong>。发布完成后，新文章会自动加入网站。</p><div class="library-links"><a class="secondary-button" href="https://github.com/lin14159265/english-study/upload/main/packages" target="_blank" rel="noopener">去 GitHub 上传</a><a href="downloads/article-generation-prompt.md" download>下载生成提示词</a><a href="downloads/pack-template.json" download>下载 JSON 示例</a></div><p class="settings-note">本机导入只保存在当前浏览器。GitHub 上传的资料会公开；阅读进度和复习词仍由各设备单独保存。</p></section>
+    <section class="import-section" aria-labelledby="packageListTitle"><div class="manager-heading"><h3 id="packageListTitle">新增资料管理</h3><button id="refreshPublished" class="text-button">检查已发布资料</button></div><p id="publishedStatus" class="settings-note" role="status"></p><div id="packageList"></div></section>
+  </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <noscript><p class="noscript">请开启 JavaScript 使用单篇阅读器。</p></noscript>
 </body>

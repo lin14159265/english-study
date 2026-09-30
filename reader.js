@@ -1,7 +1,7 @@
 /* Static reader: native selectable text; no remote dictionary or account required. */
-(() => {
+(async () => {
   'use strict';
-  const data = window.READING_DATA;
+  const data = await window.StudyLibrary.open(window.READING_DATA);
   const $ = id => document.getElementById(id);
   const escape = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const icons = {
@@ -25,6 +25,8 @@
   const KEY = 'english-study.reader.v1';
   const defaults = {theme:'system',fontSize:21,lineHeight:1.95,fontFamily:'serif',highlight:true,focus:false};
   const validId = n => Number.isInteger(n) && n >= 1 && n <= data.articles.length;
+  const idForKey = key => data.articles.find(a=>a.key===key)?.id;
+  const articleHash = a => a.batch==='original' ? `#article-${String(a.id).padStart(2,'0')}` : `#read=${encodeURIComponent(a.key)}`;
   let raw = {};
   try { raw = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch {}
   const saved = raw.settings || {};
@@ -35,15 +37,20 @@
       lineHeight:Number.isFinite(saved.lineHeight) ? Math.max(1.5,Math.min(2.5,saved.lineHeight)) : defaults.lineHeight,
       fontFamily:saved.fontFamily === 'sans' ? 'sans' : 'serif', highlight:saved.highlight !== false, focus:saved.focus === true
     },
-    current:validId(raw.current) ? raw.current : 1,
-    read:Array.isArray(raw.read) ? raw.read.filter(validId) : [],
+    current:idForKey(raw.currentKey) || (validId(raw.current) ? raw.current : 1),
+    read:Array.isArray(raw.readKeys) ? raw.readKeys.map(idForKey).filter(Boolean) : Array.isArray(raw.read) ? raw.read.filter(validId) : [],
     review:Array.isArray(raw.review) ? [...new Set(raw.review.filter(w => typeof w === 'string' && data.words[w]))] : [],
-    positions:raw.positions && typeof raw.positions === 'object' ? raw.positions : {}
+    positions:raw.positionKeys && typeof raw.positionKeys === 'object' ? Object.fromEntries(Object.entries(raw.positionKeys).map(([k,v])=>[idForKey(k),v]).filter(([id])=>id)) : raw.positions && typeof raw.positions === 'object' ? raw.positions : {}
   };
   let activeTab = 'reading', selectedWord = null, wordTrigger = null, scrollTimer, toastTimer, storageWarned = false, restoring = false, hideMeanings = false;
   const current = () => data.articles[state.current - 1];
   const toast = text => { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 2500); };
-  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { if (!storageWarned) { storageWarned = true; toast('浏览器未允许保存，设置仅在本次打开期间生效'); } } };
+  const persist = () => {
+    state.currentKey = current().key;
+    state.readKeys = state.read.map(id=>data.articles[id-1]?.key).filter(Boolean);
+    state.positionKeys = Object.fromEntries(Object.entries(state.positions).filter(([id])=>validId(Number(id))).map(([id,v])=>[data.articles[Number(id)-1].key,v]));
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { if (!storageWarned) { storageWarned = true; toast('浏览器未允许保存，设置仅在本次打开期间生效'); } }
+  };
   const recordPosition = () => { if (!restoring && activeTab === 'reading') state.positions[state.current] = Math.max(0,window.scrollY); };
   function applySettings() {
     const s = state.settings;
@@ -67,8 +74,10 @@
   }
   function renderDirectory() {
     const query = $('articleSearch').value.trim().toLowerCase();
-    const articles = data.articles.filter(a => `${a.id} ${a.title} ${a.zhTitle}`.toLowerCase().includes(query));
-    $('articleList').innerHTML = articles.map(a => `<a href="#article-${String(a.id).padStart(2,'0')}" data-article="${a.id}" ${a.id === state.current ? 'aria-current="page"' : ''}><span class="article-index">${state.read.includes(a.id) ? icon('check') : String(a.id).padStart(2,'0')}</span><span><span class="article-name" lang="en">${escape(a.title)}</span><span class="article-cn">${escape(a.zhTitle)}</span></span></a>`).join('') || '<p class="empty-state">没有匹配的文章</p>';
+    const batch = $('batchFilter').value;
+    const articles = data.articles.filter(a => (batch==='all'||a.batch===batch) && `${a.id} ${a.title} ${a.zhTitle} ${a.batchTitle}`.toLowerCase().includes(query));
+    let lastBatch = null;
+    $('articleList').innerHTML = articles.map(a => { const heading = batch==='all'&&lastBatch!==a.batch?`<p class="batch-heading">${escape(a.batchTitle)}</p>`:''; lastBatch=a.batch; return `${heading}<a href="${articleHash(a)}" data-article="${a.id}" ${a.id === state.current ? 'aria-current="page"' : ''}><span class="article-index">${state.read.includes(a.id) ? icon('check') : String(a.id).padStart(2,'0')}</span><span><span class="article-name" lang="en">${escape(a.title)}</span><span class="article-cn">${escape(a.zhTitle)}</span></span></a>`; }).join('') || '<p class="empty-state">没有匹配的文章</p>';
     $('readCount').textContent = `${state.read.length} / ${data.articles.length} 已读`;
   }
   function closeWord(returnFocus = false) { const wasOpen = !$('wordPopover').hidden; $('wordPopover').hidden = true; selectedWord = null; if (returnFocus && wasOpen && wordTrigger?.isConnected) wordTrigger.focus(); }
@@ -101,7 +110,7 @@
     document.title = `${a.title} · English Study`;
     $('articleTitle').textContent = a.title;
     $('articleNumber').textContent = `第 ${a.id} 篇 / ${data.articles.length} 篇`;
-    $('articleMeta').textContent = `${a.wordCount} 词 · ${a.words.length} 个目标词 · 约 ${Math.max(1,Math.ceil(a.wordCount / 100))} 分钟`;
+    $('articleMeta').textContent = `${a.wordCount} 词 · ${a.words.length} 个目标词 · 约 ${Math.max(1,Math.ceil(a.wordCount / 100))} 分钟${a.batch!=='original'?` · ${a.batchTitle}`:''}`;
     $('englishBody').innerHTML = a.paragraphs.map((p,i) => `<div class="paragraph" id="paragraph-${i}" data-paragraph="${i}"><p>${p}</p><button class="paragraph-translate" data-translate="${i}" aria-expanded="false" aria-controls="inline-translation-${i}" aria-label="查看第 ${i+1} 段译文">译</button><p class="inline-translation" id="inline-translation-${i}" lang="zh-CN" hidden>${escape(a.translations[i])}</p></div>`).join('');
     $('translationTitle').textContent = a.zhTitle;
     $('translationBody').innerHTML = a.translations.map((p,i) => `<div class="translation-paragraph"><span class="number">${String(i+1).padStart(2,'0')}</span><div><p>${escape(p)}</p><button class="text-button" data-jump="${i}" data-article="${a.id}">返回这一段英文</button></div></div>`).join('');
@@ -122,7 +131,7 @@
     state.current = id;
     activeTab = 'reading';
     renderArticle(); renderTabs(); closeDirectory(); persist();
-    if (push) history.pushState(null,'',`#article-${String(id).padStart(2,'0')}`);
+    if (push) history.pushState(null,'',articleHash(current()));
     restoreReadingPosition(position === null ? state.positions[id] : position);
     if (paragraph !== null) requestAnimationFrame(() => requestAnimationFrame(() => $(`paragraph-${paragraph}`)?.scrollIntoView({block:'start'})));
   }
@@ -158,7 +167,7 @@
   }
   function wordRow(lemma, review = false) {
     const w = data.words[lemma], u = getUsage(lemma), isSaved = state.review.includes(lemma);
-    return `<div class="word-row" data-row="${escape(lemma)}"><div><h3><button data-word="${escape(lemma)}" lang="en">${escape(w.word)}</button></h3><p class="sense">${u ? escape(u.sense) : '未用于正文：原词表释义存在歧义'}</p>${u ? `<span class="usage-location">${u.article === state.current ? '本篇用义' : `已核查用义 · 第 ${u.article} 篇`} · ${escape(u.form)}</span>` : ''}<details><summary>词表义项与核查语境</summary><p class="allowed">${escape(w.allowed)}</p>${u ? `<p class="example" lang="en">${escape(exampleSentence(u))}</p><button class="jump" data-jump="${u.paragraph}" data-article="${u.article}">定位到第 ${u.article} 篇原文</button>` : '<p class="allowed">desirability 侧重“值得拥有或令人想要的性质”，不能直接替代 desire 表示愿望。本材料保留这一约束问题。</p>'}</details></div><button class="icon-button ${isSaved ? 'saved' : ''}" data-save="${escape(lemma)}" aria-label="${isSaved ? '从复习词移除' : '加入复习词'} ${escape(w.word)}" aria-pressed="${isSaved}">${icon('star')}</button></div>`;
+    return `<div class="word-row" data-row="${escape(lemma)}"><div><h3><button data-word="${escape(lemma)}" lang="en">${escape(w.word)}</button></h3><p class="sense">${u ? escape(u.sense) : '未用于正文'}</p>${u ? `<span class="usage-location">${u.article === state.current ? '本篇用义' : `语境用义 · 第 ${u.article} 篇`} · ${escape(u.form)}</span>` : ''}<details><summary>词表义项与用词语境</summary><p class="allowed">${escape(w.allowed)}</p>${u ? `<p class="example" lang="en">${escape(exampleSentence(u))}</p><button class="jump" data-jump="${u.paragraph}" data-article="${u.article}">定位到第 ${u.article} 篇原文</button>` : `<p class="allowed">${escape(w.omission || '本资料未提供使用记录。')}</p>`}</details></div><button class="icon-button ${isSaved ? 'saved' : ''}" data-save="${escape(lemma)}" aria-label="${isSaved ? '从复习词移除' : '加入复习词'} ${escape(w.word)}" aria-pressed="${isSaved}">${icon('star')}</button></div>`;
   }
   function renderVocabulary() {
     const query = $('wordSearch').value.trim().toLowerCase();
@@ -191,14 +200,14 @@
     const selection = window.getSelection();
     if (trigger.classList.contains('target') && selection && !selection.isCollapsed) return;
     const paragraph = trigger.closest('[data-paragraph]');
-    const u = getUsage(lemma,state.current,paragraph ? Number(paragraph.dataset.paragraph) : null), w = data.words[lemma];
+    const w = data.words[lemma], u = (trigger.dataset.use && w.uses.find(u=>u.article===state.current && u.uid===trigger.dataset.use)) || getUsage(lemma,state.current,paragraph ? Number(paragraph.dataset.paragraph) : null);
     selectedWord = lemma; wordTrigger = trigger;
     $('popoverWord').textContent = w.word;
-    $('wordPopover').querySelector('.field-label').textContent = u?.article === state.current ? '本篇用义' : u ? `已核查用义 · 第 ${u.article} 篇` : '词义约束说明';
-    $('popoverSense').textContent = u ? u.sense : '未用于正文：词表释义存疑';
+    $('wordPopover').querySelector('.field-label').textContent = u?.article === state.current ? '本篇用义' : u ? `语境用义 · 第 ${u.article} 篇` : '未使用原因';
+    $('popoverSense').textContent = u ? u.sense : '未用于正文';
     $('popoverAllowed').textContent = w.allowed;
     $('allowedDetails').open = false;
-    $('popoverContext').textContent = u ? exampleSentence(u) : 'desirability 不能直接当作 desire（愿望）使用。';
+    $('popoverContext').textContent = u ? exampleSentence(u) : w.omission || '本资料未提供使用记录。';
     $('wordPopover').hidden = false; updateSaveWordButton();
     const rect = trigger.getBoundingClientRect(), pop = $('wordPopover');
     const left = Math.max(12,Math.min(innerWidth-pop.offsetWidth-12,rect.left));
@@ -216,6 +225,7 @@
   }
   paintIcons();
   $('articleSearch').addEventListener('input',renderDirectory);
+  $('batchFilter').addEventListener('change',renderDirectory);
   $('articleList').addEventListener('click',e=>{ const link=e.target.closest('[data-article]'); if (link) {e.preventDefault();setArticle(Number(link.dataset.article));} });
   $('directoryButton').addEventListener('click',openDirectory);
   $('closeDirectory').addEventListener('click',()=>closeDirectory(true));
@@ -282,7 +292,7 @@
   window.addEventListener('scroll',()=>{updateScrollProgress();clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{recordPosition();persist();},200);},{passive:true});
   window.addEventListener('pagehide',()=>{recordPosition();persist();});
   window.addEventListener('resize',()=>{closeWord();if(innerWidth>800)closeDirectory();updateScrollProgress();});
-  function hashArticle() { const match=location.hash.match(/^#(?:article-|en-|zh-)(\d{1,2})$/);return match&&validId(Number(match[1]))?Number(match[1]):null; }
+  function hashArticle() { if(location.hash.startsWith('#read=')){try{return idForKey(decodeURIComponent(location.hash.slice(6)))||null;}catch{return null;}} const match=location.hash.match(/^#(?:article-|en-|zh-)(\d+)$/);return match&&validId(Number(match[1]))?Number(match[1]):null; }
   function followHash() { const id=hashArticle();if(id){setArticle(id,{push:false});if(location.hash.startsWith('#zh-'))setTab('translation');} }
   window.addEventListener('popstate',followHash);
   window.addEventListener('hashchange',()=>{if(hashArticle()!==state.current)followHash();});
@@ -290,5 +300,22 @@
   applySettings();renderArticle();renderTabs();
   if(location.hash.startsWith('#zh-'))setTab('translation');
   else restoreReadingPosition(state.positions[state.current]);
-  history.replaceState(null,'',`#article-${String(state.current).padStart(2,'0')}`);
+  if(!location.hash.startsWith('#read=') || hashArticle()) history.replaceState(null,'',articleHash(current()));
+  function updateLibraryControls() {
+    const selected = $('batchFilter').value;
+    $('batchFilter').innerHTML = '<option value="all">全部资料</option><option value="original">原始 1000 词资料</option>'+StudyLibrary.entries().map(r=>`<option value="${escape(r.id)}">${escape(r.title)} · ${r.source==='local'?'本机':'已发布'}</option>`).join('');
+    if([...$('batchFilter').options].some(o=>o.value===selected)) $('batchFilter').value=selected;
+    $('libraryCount').textContent = `${Object.keys(data.words).length} 个目标词条`;
+    $('vocabularyScope').querySelector('[value=all]').textContent = `全部 ${Object.keys(data.words).length} 词条`;
+  }
+  updateLibraryControls(); persist();
+  StudyLibrary.attach({toast,closeAux:()=>{closeWord();closeDirectory();},beforeChange:()=>{recordPosition();persist();},onChange:()=>{
+    state.current = hashArticle() || idForKey(state.currentKey) || 1;
+    state.read = state.readKeys.map(idForKey).filter(Boolean);
+    state.positions = Object.fromEntries(Object.entries(state.positionKeys).map(([k,v])=>[idForKey(k),v]).filter(([id])=>id));
+    state.review = state.review.filter(k=>data.words[k]);
+    updateLibraryControls(); renderArticle(); renderTabs(); persist();
+    history.replaceState(null,'',articleHash(current()));
+    if(activeTab==='reading')restoreReadingPosition(state.positions[state.current]);
+  },select:id=>{const a=data.articles.find(a=>a.batch===id);if(a){$('batchFilter').value=id;$('articleSearch').value='';setArticle(a.id,{position:0});}}});
 })();
