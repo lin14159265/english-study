@@ -6,4 +6,4 @@
 
 不要修改 `index.json`，它会在发布时自动生成目录。不要给资料 JSON 加 YAML front matter（文件应直接以 `{` 开始）。所有文件都是公开的，请只上传学习资料。
 
-下载生成提示词和示例：[生成提示词](../downloads/article-generation-prompt.md) · [JSON 示例](../downloads/pack-template.json)
+下载生成提示词和示例：[生成提示词](../downloads/article-generation-prompt.txt) · [JSON 示例](../downloads/pack-template.json)
