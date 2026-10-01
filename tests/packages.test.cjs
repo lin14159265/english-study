@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const core = require('../package-core.js');
 const example = JSON.parse(fs.readFileSync(__dirname+'/../downloads/pack-template.json','utf8'));
-const copy = () => structuredClone(example);
+const copy = () => { const p=structuredClone(example);p.articles.forEach(a=>a.paragraphs.forEach(p=>delete p.sentences));return p; };
 function invalid(mutate, pattern) {
   const pack = copy(); mutate(pack);
   const result = core.validate(pack);
@@ -86,4 +86,16 @@ test('legacy material remains intact when browser storage is unavailable',async(
   assert.equal(data.articles.length,25); assert.equal(Object.keys(data.words).length,1000);
   assert.equal(data.articles[0].key,'original/1');
   assert.equal(JSON.stringify(base.window.READING_DATA),before);
+});
+test('optional sentence pairs preserve exact source and reject omitted or rewritten English',()=>{
+  const r=core.validate(example);assert.equal(r.ok,true);
+  assert.equal(r.compiled.articles[0].sentenceTranslations[0][1].zh,example.articles[0].paragraphs[0].sentences[1].zh);
+  const p=structuredClone(example);p.articles[0].paragraphs[0].sentences.pop();
+  assert.equal(core.validate(p).ok,false);
+  p.articles[0].paragraphs[0].sentences=[];
+  assert.match(core.validate(p).errors.join(' '),/逐句译文/);
+  const q=structuredClone(example);q.articles[0].paragraphs[0].sentences[0].en='Different sentence.';
+  assert.match(core.validate(q).errors.join(' '),/拼接/);
+  assert.equal(core.validate(copy()).ok,true);
+  assert.equal(core.validate(copy()).compiled.articles[0].sentenceTranslations[0],null);
 });

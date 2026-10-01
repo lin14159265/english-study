@@ -42,7 +42,8 @@
     review:Array.isArray(raw.review) ? [...new Set(raw.review.filter(w => typeof w === 'string' && data.words[w]))] : [],
     positions:raw.positionKeys && typeof raw.positionKeys === 'object' ? Object.fromEntries(Object.entries(raw.positionKeys).map(([k,v])=>[idForKey(k),v]).filter(([id])=>id)) : raw.positions && typeof raw.positions === 'object' ? raw.positions : {}
   };
-  let activeTab = 'reading', selectedWord = null, wordTrigger = null, scrollTimer, toastTimer, storageWarned = false, restoring = false, hideMeanings = false;
+  let activeTab = 'reading', selectedWord = null, wordTrigger = null, scrollTimer, toastTimer, storageWarned = false, restoring = false;
+  let learning;
   const current = () => data.articles[state.current - 1];
   const toast = text => { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 2500); };
   const persist = () => {
@@ -116,6 +117,7 @@
     $('wordSearch').value = '';
     $('vocabularyScope').value = 'article';
     renderDirectory(); renderVocabulary(); renderReview(); updateNavigation();
+    learning.articleChanged();
   }
   function restoreReadingPosition(position) {
     restoring = true;
@@ -135,16 +137,16 @@
     if (paragraph !== null) requestAnimationFrame(() => requestAnimationFrame(() => $(`paragraph-${paragraph}`)?.scrollIntoView({block:'start'})));
   }
   function renderTabs() {
-    ['reading','vocabulary','translation','review'].forEach(tab => {
+    ['reading','vocabulary','sentence','translation','review'].forEach(tab => {
       const selected = tab === activeTab;
       $(`panel-${tab}`).hidden = !selected;
       $(`tab-${tab}`).setAttribute('aria-selected',String(selected));
       $(`tab-${tab}`).tabIndex = selected ? 0 : -1;
     });
-    $('reviewCount').textContent = state.review.length ? state.review.length : '';
+    $('reviewCount').textContent = learning.count() || '';
   }
   function setTab(tab) {
-    if (!['reading','vocabulary','translation','review'].includes(tab) || activeTab === tab) return;
+    if (!['reading','vocabulary','sentence','translation','review'].includes(tab) || activeTab === tab) return;
     recordPosition(); closeWord(); activeTab = tab;
     if (tab === 'review') renderReview();
     renderTabs(); persist();
@@ -156,20 +158,11 @@
     return uses.find(u => u.article === article && u.paragraph === paragraph) || uses.find(u => u.article === article) || uses[0] || null;
   }
   function exampleSentence(u) {
-    if (!u) return '';
-    const p = data.articles[u.article-1].plain[u.paragraph];
-    const sentences = p.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [p];
-    if (Number.isInteger(u.start)) {
-      let offset = 0;
-      for (const sentence of sentences) { const end = offset+sentence.length; if(u.start>=offset&&u.start<end)return sentence.trim(); offset=end; }
-    }
-    const form = u.form.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    const pat = new RegExp(`\\b${form}\\b`,'i');
-    return (sentences.find(s => pat.test(s)) || p).trim();
+    return u ? StudyLearningCore.contextFor(data.articles[u.article-1],u) : '';
   }
   function wordRow(lemma, review = false) {
-    const w = data.words[lemma], u = getUsage(lemma), isSaved = state.review.includes(lemma);
-    return `<div class="word-row" data-row="${escape(lemma)}"><div><h3><button data-word="${escape(lemma)}" lang="en">${escape(w.word)}</button></h3><p class="sense">${u ? escape(u.sense) : '未用于正文'}</p>${u ? `<span class="usage-location">${u.article === state.current ? '本篇用义' : `语境用义 · 第 ${u.article} 篇`} · ${escape(u.form)}</span>` : ''}<details><summary>词表义项与用词语境</summary><p class="allowed">${escape(w.allowed)}</p>${u ? `<p class="example" lang="en">${escape(exampleSentence(u))}</p><button class="jump" data-jump="${u.paragraph}" data-article="${u.article}">定位到第 ${u.article} 篇原文</button>` : `<p class="allowed">${escape(w.omission || '本资料未提供使用记录。')}</p>`}</details></div><button class="icon-button ${isSaved ? 'saved' : ''}" data-save="${escape(lemma)}" aria-label="${isSaved ? '从复习词移除' : '加入复习词'} ${escape(w.word)}" aria-pressed="${isSaved}">${icon('star')}</button></div>`;
+    const w = data.words[lemma], u = getUsage(lemma), isSaved = learning.saved(learning.entry(lemma,u));
+    return `<div class="word-row" data-row="${escape(lemma)}"><div><h3><button data-word="${escape(lemma)}" lang="en">${escape(w.word)}</button></h3><p class="sense">${u ? escape(u.sense) : '未用于正文'}</p>${u ? `<span class="usage-location">${u.article === state.current ? '本篇用义' : `语境用义 · 第 ${u.article} 篇`} · ${escape(u.form)}</span>` : ''}<details><summary>词表义项与用词语境</summary><p class="allowed">${escape(w.allowed)}</p>${u ? `<p class="example" lang="en">${escape(exampleSentence(u))}</p><button class="jump" data-jump="${u.paragraph}" data-article="${u.article}">定位到第 ${u.article} 篇原文</button>` : `<p class="allowed">${escape(w.omission || '本资料未提供使用记录。')}</p>`}</details></div><button class="icon-button ${isSaved ? 'saved' : ''}" data-save="${escape(lemma)}" aria-label="${isSaved ? '移除本次用义' : '收藏本次用义'} ${escape(w.word)}" aria-pressed="${isSaved}" ${u?'':'disabled'}>${icon('star')}</button></div>`;
   }
   function renderVocabulary() {
     const query = $('wordSearch').value.trim().toLowerCase();
@@ -178,23 +171,13 @@
     const filtered = words.filter(k => `${k} ${data.words[k].allowed} ${getUsage(k)?.sense || ''}`.toLowerCase().includes(query));
     $('vocabularyList').innerHTML = filtered.map(k=>wordRow(k)).join('') || '<p class="empty-state">没有匹配的词。可以试试中文释义，或切换到全部词汇。</p>';
   }
-  function renderReview() {
-    $('reviewSummary').textContent = `${state.review.length} 个词`;
-    $('reviewList').classList.toggle('meanings-hidden', hideMeanings);
-    $('reviewList').innerHTML = state.review.map(k=>wordRow(k,true)).join('') || '<p class="empty-state">暂时没有复习词。读文章时点击一个目标词，再点“加入复习”。</p>';
-    $('reviewCount').textContent = state.review.length ? state.review.length : '';
-  }
+  function renderReview() { learning.renderReview(); }
   function toggleSave(lemma) {
-    if (!data.words[lemma]) return;
-    const saved = state.review.includes(lemma);
-    state.review = saved ? state.review.filter(w=>w!==lemma) : [...state.review,lemma];
-    persist(); renderVocabulary(); renderReview();
-    if (selectedWord === lemma) updateSaveWordButton();
-    toast(saved ? '已从复习词移除' : '已加入复习词');
+    learning.toggle(selectedWord===lemma ? learning.selected() : learning.entry(lemma,getUsage(lemma)));
   }
   function updateSaveWordButton() {
-    const saved = state.review.includes(selectedWord);
-    $('saveWord').innerHTML = `${icon(saved ? 'check' : 'plus')}${saved ? '已加入 · 移除' : '加入复习'}`;
+    const saved = learning.saved(learning.selected());
+    $('saveWord').innerHTML = `${icon(saved ? 'check' : 'plus')}${saved ? '已收藏本次用义 · 移除' : '收藏本次用义'}`;
     $('saveWord').setAttribute('aria-pressed',String(saved));
   }
   function showWord(lemma, trigger) {
@@ -210,6 +193,7 @@
     $('popoverAllowed').textContent = w.allowed;
     $('allowedDetails').open = false;
     $('popoverContext').textContent = u ? exampleSentence(u) : w.omission || '本资料未提供使用记录。';
+    learning.prepare(lemma,u);
     $('wordPopover').hidden = false; updateSaveWordButton();
     const rect = trigger.getBoundingClientRect(), pop = $('wordPopover');
     const left = Math.max(12,Math.min(innerWidth-pop.offsetWidth-12,rect.left));
@@ -221,6 +205,14 @@
     if (article !== state.current) setArticle(article,{position:0,paragraph});
     else { setTab('reading'); requestAnimationFrame(()=>requestAnimationFrame(()=>$(`paragraph-${paragraph}`)?.scrollIntoView({block:'start'}))); }
   }
+  learning = StudyLearning.create({data,current,legacy:state.review,toast,
+    changed:()=>{renderVocabulary();if(selectedWord)updateSaveWordButton();},navigate:jump,
+    openSentence:snapshot=>{
+      const id=idForKey(snapshot.articleKey);if(!id)return;
+      if(id!==state.current)setArticle(id,{position:0});
+      learning.articleChanged(snapshot.id);setTab('sentence');$('sentenceOwn').focus();
+    }
+  });
   paintIcons();
   $('articleSearch').addEventListener('input',renderDirectory);
   $('batchFilter').addEventListener('change',renderDirectory);
@@ -265,7 +257,6 @@
   $('closeWord').addEventListener('click',()=>closeWord(true));
   $('wordSearch').addEventListener('input',renderVocabulary);
   $('vocabularyScope').addEventListener('change',renderVocabulary);
-  $('hideReviewMeanings').addEventListener('click',()=>{hideMeanings=!hideMeanings;$('hideReviewMeanings').textContent=hideMeanings?'显示释义，核对答案':'隐藏释义，自测一下';$('hideReviewMeanings').setAttribute('aria-pressed',String(hideMeanings));renderReview();});
   $('readButton').addEventListener('click',()=>{const wasRead=state.read.includes(state.current);state.read=wasRead?state.read.filter(n=>n!==state.current):[...state.read,state.current];persist();renderDirectory();updateNavigation();toast(wasRead?'已取消已读标记':'本篇已标记为已读');});
   $('focusButton').addEventListener('click',()=>{recordPosition();state.settings.focus=!state.settings.focus;closeDirectory();closeWord();applySettings();persist();});
   $('themeButton').addEventListener('click',()=>{state.settings.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';applySettings();persist();});
@@ -311,7 +302,7 @@
     state.current = hashArticle() || idForKey(state.currentKey) || 1;
     state.read = state.readKeys.map(idForKey).filter(Boolean);
     state.positions = Object.fromEntries(Object.entries(state.positionKeys).map(([k,v])=>[idForKey(k),v]).filter(([id])=>id));
-    state.review = state.review.filter(k=>data.words[k]);
+    learning.libraryChanged();
     updateLibraryControls(); renderArticle(); renderTabs(); persist();
     history.replaceState(null,'',articleHash(current()));
     if(activeTab==='reading')restoreReadingPosition(state.positions[state.current]);

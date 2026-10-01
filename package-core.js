@@ -45,11 +45,22 @@
       ids.add(a.id);
       if (!text(a.title,200) || !text(a.zhTitle,200)) fail(`${label} 需有英文 title 和中文 zhTitle。`);
       if (!Array.isArray(a.paragraphs) || !a.paragraphs.length || a.paragraphs.length > 100) { fail(`${label} 需有 1–100 个段落。`); return; }
-      const plain = [], translations = [], spans = a.paragraphs.map(()=>[]);
+      const plain = [], translations = [], sentenceTranslations = [], spans = a.paragraphs.map(()=>[]);
       a.paragraphs.forEach((p,pi) => {
         if (!object(p) || !text(p.en,20000) || !text(p.zh,20000)) { fail(`${label} 第 ${pi+1} 段必须同时有非空 en 和 zh。`); plain.push(''); translations.push(''); return; }
         if (/<\/?[a-z][^>]*>/i.test(p.en) || /\*\*/.test(p.en)) fail(`${label} 第 ${pi+1} 段 en 必须是纯文本，不要 HTML 或 **加粗标记**。`);
         plain.push(p.en); translations.push(p.zh);
+        let pairs = null;
+        if (p.sentences !== undefined) {
+          const where = `${label} 第 ${pi+1} 段 sentences`;
+          if (!Array.isArray(p.sentences) || !p.sentences.length || p.sentences.length > 200 || p.sentences.some(s=>!object(s) || !text(s.en,20000) || !text(s.zh,20000))) fail(`${where} 需有 1–200 组非空 en / zh 逐句译文。`);
+          else {
+            const normalize = s=>s.trim().replace(/\s+/g,' ');
+            if (normalize(p.sentences.map(s=>s.en).join(' ')) !== normalize(p.en)) fail(`${where} 的英文按顺序拼接后必须与本段 en 完全一致，不可遗漏、改写或重复。`);
+            pairs = p.sentences.map(s=>({en:s.en.trim(),zh:s.zh.trim()}));
+          }
+        }
+        sentenceTranslations.push(pairs);
       });
       if (!Array.isArray(a.uses) || a.uses.length > 10000) { fail(`${label} uses 必须是用词记录数组（最多 10000 条）。`); return; }
       a.uses.forEach((u,ui) => {
@@ -79,7 +90,7 @@
         paragraphWords.push(keys);
         return result + escape(p.slice(cursor));
       });
-      articles.push({id:ai+1,key:`${input.id}/${a.id}`,batch:input.id,batchTitle:input.title,title:a.title,zhTitle:a.zhTitle,paragraphs,plain,translations,words:[...seen],paragraphWords,wordCount:plain.join(' ').match(/\b[a-zA-Z]+(?:['’-][a-zA-Z]+)*\b/g)?.length || 0});
+      articles.push({id:ai+1,key:`${input.id}/${a.id}`,batch:input.id,batchTitle:input.title,title:a.title,zhTitle:a.zhTitle,paragraphs,plain,translations,sentenceTranslations,words:[...seen],paragraphWords,wordCount:plain.join(' ').match(/\b[a-zA-Z]+(?:['’-][a-zA-Z]+)*\b/g)?.length || 0});
     });
     const unused = [];
     Object.values(words).forEach(w=>{

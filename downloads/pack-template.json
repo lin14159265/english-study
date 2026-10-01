@@ -6,9 +6,18 @@
   "date": "2026-10-01",
   "sourceCount": 3,
   "words": [
-    {"word": "measure", "allowed": "v. 测量"},
-    {"word": "reduce", "allowed": "v. 减少"},
-    {"word": "practical", "allowed": "adj. 实用的"}
+    {
+      "word": "measure",
+      "allowed": "v. 测量"
+    },
+    {
+      "word": "reduce",
+      "allowed": "v. 减少"
+    },
+    {
+      "word": "practical",
+      "allowed": "adj. 实用的"
+    }
   ],
   "articles": [
     {
@@ -18,17 +27,67 @@
       "paragraphs": [
         {
           "en": "The reading room was often too noisy. Before making any changes, a group of students measured the noise near the door. They also asked readers when it was hardest to focus. The answers helped them understand the problem.",
-          "zh": "阅览室常常太吵。一组学生在采取改动之前，测量了门口附近的噪声。他们还询问读者，什么时间最难集中注意力。这些回答帮助他们了解问题。"
+          "zh": "阅览室常常太吵。一组学生在采取改动之前，测量了门口附近的噪声。他们还询问读者，什么时间最难集中注意力。这些回答帮助他们了解问题。",
+          "sentences": [
+            {
+              "en": "The reading room was often too noisy.",
+              "zh": "阅览室常常太吵。"
+            },
+            {
+              "en": "Before making any changes, a group of students measured the noise near the door.",
+              "zh": "一组学生在采取改动之前，测量了门口附近的噪声。"
+            },
+            {
+              "en": "They also asked readers when it was hardest to focus.",
+              "zh": "他们还询问读者，什么时间最难集中注意力。"
+            },
+            {
+              "en": "The answers helped them understand the problem.",
+              "zh": "这些回答帮助他们了解问题。"
+            }
+          ]
         },
         {
           "en": "The students suggested a practical solution: move group discussions to a separate room. This small change reduced noise in the reading room without stopping people from working together. After a week, more students said they could study there comfortably.",
-          "zh": "学生们提出了一个实用的办法：把小组讨论移到单独的房间。这一小小的改动减少了阅览室的噪声，同时又没有妨碍大家合作。一周后，更多学生表示，他们能在这里舒适地学习。"
+          "zh": "学生们提出了一个实用的办法：把小组讨论移到单独的房间。这一小小的改动减少了阅览室的噪声，同时又没有妨碍大家合作。一周后，更多学生表示，他们能在这里舒适地学习。",
+          "sentences": [
+            {
+              "en": "The students suggested a practical solution: move group discussions to a separate room.",
+              "zh": "学生们提出了一个实用的办法：把小组讨论移到单独的房间。"
+            },
+            {
+              "en": "This small change reduced noise in the reading room without stopping people from working together.",
+              "zh": "这一小小的改动减少了阅览室的噪声，同时又没有妨碍大家合作。"
+            },
+            {
+              "en": "After a week, more students said they could study there comfortably.",
+              "zh": "一周后，更多学生表示，他们能在这里舒适地学习。"
+            }
+          ]
         }
       ],
       "uses": [
-        {"word": "measure", "paragraph": 1, "form": "measured", "occurrence": 1, "sense": "测量"},
-        {"word": "practical", "paragraph": 2, "form": "practical", "occurrence": 1, "sense": "实用的"},
-        {"word": "reduce", "paragraph": 2, "form": "reduced", "occurrence": 1, "sense": "减少"}
+        {
+          "word": "measure",
+          "paragraph": 1,
+          "form": "measured",
+          "occurrence": 1,
+          "sense": "测量"
+        },
+        {
+          "word": "practical",
+          "paragraph": 2,
+          "form": "practical",
+          "occurrence": 1,
+          "sense": "实用的"
+        },
+        {
+          "word": "reduce",
+          "paragraph": 2,
+          "form": "reduced",
+          "occurrence": 1,
+          "sense": "减少"
+        }
       ]
     }
   ]

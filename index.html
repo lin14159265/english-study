@@ -8,11 +8,13 @@
   <title>English Study · 语境阅读</title>
   <script>try{let s=JSON.parse(localStorage.getItem('english-study.reader.v1')||'{}');let t=s.settings?.theme||'system';document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;}catch{}</script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2322685f'/%3E%3Cpath d='M7 8h7l2 2 2-2h7v16h-7l-2 2-2-2H7z' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M16 10v16' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reader.css?v=20261001-divider">
+  <link rel="stylesheet" href="reader.css?v=20261001-learning-1">
   <script defer src="content.js?v=20260930-1"></script>
-  <script defer src="package-core.js?v=20260930-import-2"></script>
+  <script defer src="package-core.js?v=20261001-learning-1"></script>
   <script defer src="imports.js?v=20260930-import-2"></script>
-  <script defer src="reader.js?v=20261001-divider"></script>
+  <script defer src="learning-core.js?v=20261001-learning-1"></script>
+  <script defer src="learning.js?v=20261001-learning-1"></script>
+  <script defer src="reader.js?v=20261001-learning-1"></script>
 </head>
 <body>
   <a class="skip-link" href="#reader">跳到正文</a>
@@ -43,22 +45,34 @@
       <div class="tabs" role="tablist" aria-label="阅读与辅助内容">
         <button id="tab-reading" role="tab" aria-selected="true" aria-controls="panel-reading" data-tab="reading">阅读</button>
         <button id="tab-vocabulary" role="tab" aria-selected="false" aria-controls="panel-vocabulary" data-tab="vocabulary" tabindex="-1">本篇词汇</button>
+        <button id="tab-sentence" role="tab" aria-selected="false" aria-controls="panel-sentence" data-tab="sentence" tabindex="-1">逐句练习</button>
         <button id="tab-translation" role="tab" aria-selected="false" aria-controls="panel-translation" data-tab="translation" tabindex="-1">中文译文</button>
-        <button id="tab-review" role="tab" aria-selected="false" aria-controls="panel-review" data-tab="review" tabindex="-1">复习词<span id="reviewCount"></span></button>
+        <button id="tab-review" role="tab" aria-selected="false" aria-controls="panel-review" data-tab="review" tabindex="-1">复习<span id="reviewCount"></span></button>
       </div>
-      <section id="panel-reading" role="tabpanel" aria-labelledby="tab-reading"><article id="englishBody" lang="en" class="english-body"></article></section>
+      <section id="panel-reading" role="tabpanel" aria-labelledby="tab-reading"><div class="reading-practice"><label><input id="guessMode" type="checkbox"> 点词时先猜用义</label><span>核对后可标记认识、模糊或义项误判</span></div><article id="englishBody" lang="en" class="english-body"></article></section>
       <section id="panel-vocabulary" role="tabpanel" aria-labelledby="tab-vocabulary" hidden>
         <div class="panel-heading"><div><h2>在本篇中学到的词</h2><p>先核对本篇用义，再返回原文理解语境。</p></div></div>
         <div class="vocabulary-tools"><label class="search-box"><span data-icon="search"></span><input id="wordSearch" type="search" placeholder="搜索单词或中文释义" aria-label="搜索单词或中文释义"></label><select id="vocabularyScope" aria-label="词汇范围"><option value="article">本篇词汇</option><option value="all">全部 1000 词</option></select></div>
         <div id="vocabularyList" class="word-list"></div>
       </section>
+      <section id="panel-sentence" role="tabpanel" aria-labelledby="tab-sentence" hidden>
+        <div class="panel-heading"><h2>先理解，再核对</h2><p>按句写下自己的理解；核对后，把有困难的句子留到错句本。</p></div>
+        <div class="sentence-navigation"><span id="sentenceNumber"></span><select id="sentenceSelect" aria-label="选择练习句子"></select></div>
+        <p id="sentenceEnglish" class="practice-sentence" lang="en" tabindex="-1"></p>
+        <label class="learning-label" for="sentenceOwn">我的理解</label><textarea id="sentenceOwn" class="learning-input" rows="3" maxlength="5000" placeholder="先写下这句话的中文意思或句子主干，不必追求漂亮的翻译。"></textarea>
+        <button id="revealSentence" class="secondary-button" aria-expanded="false" aria-controls="sentenceReferenceBox">查看参考译文</button>
+        <div id="sentenceReferenceBox" class="sentence-reference" hidden><p id="sentenceReferenceLabel" class="field-label"></p><p id="sentenceReference"></p></div>
+        <fieldset id="sentenceErrors" class="sentence-errors"><legend>需要复习的原因（可多选）</legend><label><input type="checkbox" value="词义"> 词义</label><label><input type="checkbox" value="句子主干"> 句子主干</label><label><input type="checkbox" value="否定"> 否定</label><label><input type="checkbox" value="从句"> 从句</label><label><input type="checkbox" value="其他"> 其他</label></fieldset>
+        <label class="learning-label" for="sentenceReason">易错原因 / 修改后的理解（选填）</label><textarea id="sentenceReason" class="learning-input" rows="2" maxlength="2000" placeholder="例如：把 value 理解成了动词，忽略了 not。"></textarea>
+        <div class="sentence-controls"><button id="sentencePrev" class="text-button">上一句</button><button id="sentenceNext" class="text-button">下一句</button><button id="saveSentence" class="primary-button">保存到错句本</button></div><p id="sentenceStatus" class="learning-meta" role="status"></p>
+      </section>
       <section id="panel-translation" role="tabpanel" aria-labelledby="tab-translation" hidden><div class="panel-heading"><h2 id="translationTitle"></h2><p>按英文段落顺序意译，读完英文后再核对。</p></div><div id="translationBody" class="translation-body"></div></section>
-      <section id="panel-review" role="tabpanel" aria-labelledby="tab-review" hidden><div class="panel-heading"><h2>我的复习词</h2><p>从正文点词，或在词汇页点星号，留下需要重读的词。</p></div><div class="review-tools"><button id="hideReviewMeanings" class="secondary-button" aria-pressed="false">隐藏释义，自测一下</button><span id="reviewSummary"></span></div><div id="reviewList" class="word-list"></div></section>
+      <section id="panel-review" role="tabpanel" aria-labelledby="tab-review" hidden><div class="panel-heading"><h2>我的复习</h2><p>保留收藏时的具体用义和原句；同一个词的不同用义分别复习。</p></div><div class="review-switch" role="group" aria-label="复习内容"><button id="reviewWords" class="secondary-button" aria-pressed="true">义项卡</button><button id="reviewSentences" class="secondary-button" aria-pressed="false">错句本</button></div><div class="review-tools"><button id="hideReviewMeanings" class="secondary-button" aria-pressed="false">隐藏用义，自测一下</button><span id="reviewSummary"></span></div><div id="reviewList" class="word-list"></div></section>
       <footer class="article-footer"><button class="text-button prev-button" data-icon-before="left">上一篇</button><div><button class="text-button next-button" data-icon-after="right">下一篇</button><button id="readButton" class="primary-button">标记已读</button></div></footer>
       <p class="reading-note">原创语境训练 · 目标词首次出现加粗 · 点词查用义，点段落旁的“译”核对中文</p>
     </div>
   </main>
-  <div id="wordPopover" class="word-popover" role="dialog" aria-label="单词用义" hidden><div class="popover-heading"><h2 id="popoverWord" lang="en"></h2><button id="closeWord" class="icon-button" data-icon="x" aria-label="关闭单词解释"></button></div><small class="field-label">本篇用义</small><p id="popoverSense" class="word-sense"></p><details id="allowedDetails"><summary>词表允许义项</summary><p id="popoverAllowed"></p></details><p id="popoverContext" lang="en" class="word-context"></p><button id="saveWord" class="secondary-button" data-icon-before="plus">加入复习</button></div>
+  <div id="wordPopover" class="word-popover" role="dialog" aria-label="单词用义" hidden><div class="popover-heading"><h2 id="popoverWord" lang="en"></h2><button id="closeWord" class="icon-button" data-icon="x" aria-label="关闭单词解释"></button></div><p id="popoverContext" lang="en" class="word-context"></p><div id="wordQuiz" hidden><label class="learning-label" for="wordGuess">这个词在此句是什么意思？</label><input id="wordGuess" class="learning-input" type="text" maxlength="2000"><button id="revealWord" class="secondary-button">核对本次用义</button></div><div id="wordAnswer"><small class="field-label">本篇用义</small><p id="popoverSense" class="word-sense"></p><details id="allowedDetails"><summary>词表允许义项</summary><p id="popoverAllowed"></p></details></div><div id="rateWord" class="word-ratings" role="group" aria-label="核对后自评"><button class="secondary-button" data-rating="known" aria-pressed="false">认识</button><button class="secondary-button" data-rating="uncertain" aria-pressed="false">模糊</button><button class="secondary-button" data-rating="wrong-sense" aria-pressed="false">误用了另一个义项</button></div><p class="quiz-note">模糊或义项误判会加入复习。按自己的判断记录。</p><p id="wordQuizStatus" class="learning-meta" role="status"></p><button id="saveWord" class="secondary-button" data-icon-before="plus">收藏本次用义</button></div>
   <dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle"><div class="dialog-heading"><h2 id="settingsTitle">阅读设置</h2><button class="icon-button close-dialog" data-icon="x" aria-label="关闭阅读设置"></button></div><form method="dialog">
     <fieldset><legend>页面外观</legend><div class="theme-options"><label><input type="radio" name="theme" value="light"><span>浅色</span></label><label><input type="radio" name="theme" value="sepia"><span>护眼</span></label><label><input type="radio" name="theme" value="dark"><span>深色</span></label><label><input type="radio" name="theme" value="system"><span>跟随系统</span></label></div></fieldset>
     <label class="range-label" for="fontSize">正文字号 <output id="fontSizeValue">21 px</output></label><input id="fontSize" type="range" min="16" max="28" step="1" value="21">
@@ -66,7 +80,7 @@
     <label class="select-label" for="fontFamily">英文字体<select id="fontFamily"><option value="serif">衬线 · Georgia</option><option value="sans">无衬线 · 系统字体</option></select></label>
     <label class="switch-row"><span>强调目标词</span><input id="highlightWords" type="checkbox" checked></label>
     <div class="settings-footer"><button type="button" id="resetSettings" class="text-button">恢复默认设置</button><button class="primary-button" value="done">完成</button></div>
-  </form><p class="settings-note">设置、已读标记和复习词保存在当前浏览器中。</p></dialog>
+  </form><p class="settings-note">设置、已读标记、义项卡和错句保存在当前浏览器中。</p></dialog>
   <dialog id="aboutDialog" class="settings-dialog" aria-labelledby="aboutTitle"><div class="dialog-heading"><h2 id="aboutTitle">关于这份材料</h2><button class="icon-button close-dialog" data-icon="x" aria-label="关闭材料说明"></button></div><p>这份材料来自 2026 年 9 月 29 日导出的 1000 词词表，包含 25 篇原创语境短文，覆盖 999 词。文章是训练情境，非真实新闻报道。</p><p>英文正文、中文参考意译和词表义项均保留。点击目标词，查看已核查的本篇用义；在“本篇词汇”中切换到“全部 1000 词”，可搜索完整词表。</p><p><strong lang="en">desirability</strong> 因原词表的“愿望，欲求”释义存在歧义，未强行用于正文，仍保留在完整词表中。</p><p>阅读位置、已读标记和复习词保存在当前浏览器。更换设备、清除浏览器数据或使用无痕窗口时不会自动同步。</p><p>快捷键：Alt + ← / → 切换文章，Esc 关闭辅助窗口。</p></dialog>
   <dialog id="libraryDialog" class="settings-dialog library-dialog" aria-labelledby="libraryTitle">
     <div class="dialog-heading"><div><small class="field-label">READING LIBRARY</small><h2 id="libraryTitle">导入与资料</h2></div><button class="icon-button close-dialog" data-icon="x" aria-label="关闭导入与资料"></button></div>
