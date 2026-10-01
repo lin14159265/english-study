@@ -70,7 +70,6 @@
     $('lineHeight').value = s.lineHeight; $('lineHeightValue').textContent = s.lineHeight.toFixed(2);
     $('fontFamily').value = s.fontFamily; $('highlightWords').checked = s.highlight;
     document.querySelectorAll('input[name=theme]').forEach(el => el.checked = el.value === s.theme);
-    requestAnimationFrame(updateScrollProgress);
   }
   function renderDirectory() {
     const query = $('articleSearch').value.trim().toLowerCase();
@@ -122,7 +121,7 @@
     restoring = true;
     requestAnimationFrame(() => requestAnimationFrame(() => {
       window.scrollTo(0,Number.isFinite(position) ? position : 0);
-      restoring = false; updateScrollProgress();
+      restoring = false;
     }));
   }
   function setArticle(id, {push=true, position=null, paragraph=null} = {}) {
@@ -143,7 +142,6 @@
       $(`tab-${tab}`).tabIndex = selected ? 0 : -1;
     });
     $('reviewCount').textContent = state.review.length ? state.review.length : '';
-    requestAnimationFrame(updateScrollProgress);
   }
   function setTab(tab) {
     if (!['reading','vocabulary','translation','review'].includes(tab) || activeTab === tab) return;
@@ -223,10 +221,6 @@
     if (article !== state.current) setArticle(article,{position:0,paragraph});
     else { setTab('reading'); requestAnimationFrame(()=>requestAnimationFrame(()=>$(`paragraph-${paragraph}`)?.scrollIntoView({block:'start'}))); }
   }
-  function updateScrollProgress() {
-    const max = document.documentElement.scrollHeight - innerHeight;
-    $('scrollProgress').style.width = `${max > 0 ? Math.max(0,Math.min(100,window.scrollY/max*100)) : 100}%`;
-  }
   paintIcons();
   $('articleSearch').addEventListener('input',renderDirectory);
   $('batchFilter').addEventListener('change',renderDirectory);
@@ -260,7 +254,7 @@
     const jumpButton=e.target.closest('[data-jump]');
     if(jumpButton){jump(Number(jumpButton.dataset.article),Number(jumpButton.dataset.jump));return;}
     const translate=e.target.closest('[data-translate]');
-    if(translate){const p=$(`inline-translation-${translate.dataset.translate}`);p.hidden=!p.hidden;translate.setAttribute('aria-expanded',String(!p.hidden));updateScrollProgress();return;}
+    if(translate){const p=$(`inline-translation-${translate.dataset.translate}`);p.hidden=!p.hidden;translate.setAttribute('aria-expanded',String(!p.hidden));return;}
     if(!$('wordPopover').contains(e.target))closeWord();
   });
   $('englishBody').addEventListener('keydown',e=>{
@@ -293,9 +287,9 @@
       if(e.key==='ArrowLeft'){e.preventDefault();setArticle(state.current-1);}
     }
   });
-  window.addEventListener('scroll',()=>{updateScrollProgress();clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{recordPosition();persist();},200);},{passive:true});
+  window.addEventListener('scroll',()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{recordPosition();persist();},200);},{passive:true});
   window.addEventListener('pagehide',()=>{recordPosition();persist();});
-  window.addEventListener('resize',()=>{closeWord();if(innerWidth>800)closeDirectory();updateScrollProgress();});
+  window.addEventListener('resize',()=>{closeWord();if(innerWidth>800)closeDirectory();});
   function hashArticle() { if(location.hash.startsWith('#read=')){try{return idForKey(decodeURIComponent(location.hash.slice(6)))||null;}catch{return null;}} const match=location.hash.match(/^#(?:article-|en-|zh-)(\d+)$/);return match&&validId(Number(match[1]))?Number(match[1]):null; }
   function followHash() { const id=hashArticle();if(id){setArticle(id,{push:false});if(location.hash.startsWith('#zh-'))setTab('translation');} }
   window.addEventListener('popstate',followHash);
