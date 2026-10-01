@@ -44,6 +44,7 @@
     if (!Array.isArray(input.articles) || input.articles.length < 1 || input.articles.length > 100) fail('articles 需包含 1–100 篇文章。');
     if(input.id==='original-baseline' && (input.articles.length!==25 || input.articles.some((a,i)=>a?.id!==`article-${String(i+1).padStart(2,'0')}`))) fail('原始资料修订必须保留 25 篇及原文章 ID。');
     if (errors.length) return {ok:false,errors,warnings};
+    if(input.topics!==undefined&&(!Array.isArray(input.topics)||input.topics.length>10||input.topics.some(t=>!text(t,50))||new Set(input.topics).size!==input.topics.length))fail('topics 应为最多 10 个不同主题名称。');
     if (input.sourceCount !== input.words.length) fail(`sourceCount 必须等于去重后的目标词数量（当前为 ${input.words.length}）。`);
     if(input.sourceCorrections!==undefined && (!Array.isArray(input.sourceCorrections)||input.sourceCorrections.some(c=>!object(c)||!text(c.word,80)||!text(c.before,2000)||!text(c.after,2000)||!text(c.reason,2000))))fail('词表来源修正需保留单词、修正前后义项及原因。');
     const words = Object.create(null), articles = [], ids = new Set();
@@ -63,7 +64,7 @@
       ids.add(a.id);
       if (!text(a.title,200) || !text(a.zhTitle,200)) fail(`${label} 需有英文 title 和中文 zhTitle。`);
       if (!Array.isArray(a.paragraphs) || !a.paragraphs.length || a.paragraphs.length > 100) { fail(`${label} 需有 1–100 个段落。`); return; }
-      const plain = [], translations = [], sentenceTranslations = [], spans = a.paragraphs.map(()=>[]);
+      const plain = [], translations = [], sentenceTranslations = [], sentenceAnalyses = [], spans = a.paragraphs.map(()=>[]);
       a.paragraphs.forEach((p,pi) => {
         if (!object(p) || !text(p.en,20000) || !text(p.zh,20000)) { fail(`${label} 第 ${pi+1} 段必须同时有非空 en 和 zh。`); plain.push(''); translations.push(''); return; }
         if (/<\/?[a-z][^>]*>/i.test(p.en) || /\*\*/.test(p.en)) fail(`${label} 第 ${pi+1} 段 en 必须是纯文本，不要 HTML 或 **加粗标记**。`);
@@ -79,6 +80,9 @@
           }
         }
         sentenceTranslations.push(pairs);
+        const analyses=p.analysis||[];
+        if(p.analysis!==undefined&&(!Array.isArray(p.analysis)||p.analysis.length>200||p.analysis.some(x=>!object(x)||!text(x.quote,20000)||!p.en.includes(x.quote)||!['core','logic','note'].some(k=>text(x[k],5000))||['core','logic','note'].some(k=>x[k]!==undefined&&(typeof x[k]!=='string'||x[k].length>5000)))||new Set(p.analysis.map(x=>x?.quote)).size!==p.analysis.length))fail(`${label} 第 ${pi+1} 段 analysis 需要唯一真实原句 quote 和至少一种分析。`);
+        sentenceAnalyses.push(Array.isArray(analyses)?analyses.map(x=>({...x})):[]);
       });
       if (!Array.isArray(a.uses) || a.uses.length > 10000) { fail(`${label} uses 必须是用词记录数组（最多 10000 条）。`); return; }
       a.uses.forEach((u,ui) => {
@@ -109,7 +113,7 @@
         return result + escape(p.slice(cursor));
       });
       const quiz=questions(a,plain,fail,label);
-      articles.push({id:ai+1,key:`${input.id}/${a.id}`,batch:input.id,batchTitle:input.title,title:a.title,zhTitle:a.zhTitle,paragraphs,plain,translations,sentenceTranslations,questions:quiz,sourceSignature:signature(a),quizSignature:signature({paragraphs:quiz.map(q=>({en:JSON.stringify(q)})),uses:[]}),words:[...seen],paragraphWords,wordCount:plain.join(' ').match(/\b[a-zA-Z]+(?:['’-][a-zA-Z]+)*\b/g)?.length || 0});
+      articles.push({id:ai+1,key:`${input.id}/${a.id}`,batch:input.id,batchTitle:input.title,date:input.date,topics:input.topics||[],title:a.title,zhTitle:a.zhTitle,paragraphs,plain,translations,sentenceTranslations,sentenceAnalyses,questions:quiz,sourceSignature:signature(a),quizSignature:signature({paragraphs:quiz.map(q=>({en:JSON.stringify(q)})),uses:[]}),words:[...seen],paragraphWords,wordCount:plain.join(' ').match(/\b[a-zA-Z]+(?:['’-][a-zA-Z]+)*\b/g)?.length || 0});
     });
     const unused = [];
     Object.values(words).forEach(w=>{
@@ -128,7 +132,22 @@
     try { return validate(JSON.parse(source.replace(/^\uFEFF/,''))); }
     catch { return {ok:false,errors:['JSON 格式错误。请使用 AI 导出的 .json 文件；不要包含代码围栏、注释或省略号。'],warnings:[]}; }
   }
-  const api = {validate,parse,matches,escape,signature};
+  function preserveLegacyHints(article, original, words) {
+    const decode=s=>s.replace(/&(?:amp|lt|gt|quot|#\d+|#x[0-9a-f]+);/gi,x=>x[1]==='#'?String.fromCodePoint(parseInt(x.slice(x[2].toLowerCase()==='x'?3:2,-1),x[2].toLowerCase()==='x'?16:10)):({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"'}[x]||x));
+    const plain=s=>decode(s.replace(/<[^>]*>/g,''));
+    const spans=html=>[...html.matchAll(/<(strong|span)\b([^>]*\bclass="[^"]*\btarget\b[^"]*"[^>]*)>([^<]*)<\/\1>/g)].map(m=>({start:plain(html.slice(0,m.index)).length,form:decode(m[3]),key:m[2].match(/data-word="([^"]+)"/)?.[1],uid:m[2].match(/data-use="([^"]+)"/)?.[1]}));
+    const seen=new Set(), paragraphWords=[];
+    const paragraphs=article.paragraphs.map((html,pi)=>{
+      const en=article.plain[pi], all=spans(html);
+      if(en===original.plain[pi])for(const h of spans(original.paragraphs[pi])){
+        if(words[h.key]&&en.slice(h.start,h.start+h.form.length)===h.form&&!all.some(s=>h.start<s.start+s.form.length&&h.start+h.form.length>s.start))all.push(h);
+      }
+      let result='',cursor=0;const keys=[];
+      all.sort((a,b)=>a.start-b.start).forEach(s=>{const first=!seen.has(s.key),tag=first?'strong':'span';result+=escape(en.slice(cursor,s.start))+`<${tag} class="target${first?'':' target-repeat'}" tabindex="0" role="button" data-word="${escape(s.key)}"${s.uid?` data-use="${escape(s.uid)}"`:''} aria-label="查看 ${escape(words[s.key]?.word||s.form)} 的本篇用义">${escape(s.form)}</${tag}>`;cursor=s.start+s.form.length;seen.add(s.key);if(!keys.includes(s.key))keys.push(s.key);});paragraphWords.push(keys);return result+escape(en.slice(cursor));
+    });
+    return {...article,paragraphs,paragraphWords,words:[...seen]};
+  }
+  const api = {validate,parse,matches,escape,signature,preserveLegacyHints};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StudyPack = api;
 })(typeof window !== 'undefined' ? window : globalThis);

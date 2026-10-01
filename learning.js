@@ -6,7 +6,7 @@
   const KEY = 'english-study.learning.v1';
   function create({data,current,legacy,toast,changed,navigate,openSentence,questionCount,renderQuestions,undoQuestion,removedQuestionCount}) {
     const raw=root.StudyState.get('learning',null);
-    const state=C.load(raw);
+    let state=C.load(raw);
     let selected=null,reviewView='words',hiddenAnswers=false,quizRevealed=false,sentenceList=[],sentenceIndex=0,referenceVisible=false;
     function persist() {
       try {return root.StudyState.set('learning',state);}
@@ -22,8 +22,7 @@
       const exists=saved(e);
       if(exists)stash('word',state.cards.find(c=>c.id===e.id));
       state.cards=exists ? state.cards.filter(c=>c.id!==e.id) : [...state.cards,{...e,created:Date.now()}];
-      const ok=persist();refresh();
-      if(ok)toast(exists?'已移除这张义项卡':'已收藏本次用义和原句');
+      persist();refresh();root.StudyState.flush().then(()=>toast(exists?'已移除这张义项卡':'已收藏本次用义和原句')).catch(e=>toast(e.message));
     }
     function prepare(word,use) {
       selected=entry(word,use);quizRevealed=!state.guessMode || !selected;
@@ -44,12 +43,12 @@
       quizRevealed=true;$('wordAnswer').hidden=false;$('rateWord').hidden=false;$('revealWord').hidden=true;
       $('rateWord').querySelector('button').focus();
     });
-    $('rateWord').addEventListener('click',e=>{
+    $('rateWord').addEventListener('click',async e=>{
       const b=e.target.closest('[data-rating]');if(!b || !quizRevealed || !selected)return;
       C.rate(state,selected,b.dataset.rating,$('wordGuess').value);
-      const ok=persist();refresh();
+      const id=selected.id;persist();refresh();
       $('rateWord').querySelectorAll('button').forEach(el=>el.setAttribute('aria-pressed',String(el===b)));
-      $('wordQuizStatus').textContent=ok ? `已记录：${labels[b.dataset.rating]}${b.dataset.rating==='known'?'':' · 已加入义项卡'}` : '暂存于本页，未能写入浏览器';
+      $('wordQuizStatus').textContent='正在保存本次判断…';try{await root.StudyState.flush();if(selected?.id===id)$('wordQuizStatus').textContent=`已记录：${labels[b.dataset.rating]}${b.dataset.rating==='known'?'':' · 已加入义项卡'}`;}catch(e){$('wordQuizStatus').textContent='未保存：'+e.message;}
     });
     function wordCard(card) {
       const where=C.locate(data,card),attempt=state.attempts[card.id];
@@ -103,7 +102,7 @@
       $('sentenceReason').value=typeof draft.reason==='string'?draft.reason:'';
       $('sentenceErrors').querySelectorAll('input').forEach(el=>el.checked=Array.isArray(draft.categories)&&draft.categories.includes(el.value));
       $('sentenceReferenceLabel').textContent=s.referenceKind==='sentence'?'本句参考译文':'本段参考译文（资料未提供逐句译文）';
-      $('sentenceReference').textContent=s.reference;
+      $('sentenceReference').textContent=s.reference;$('sentenceAnalysis').innerHTML=root.StudyExperienceAPI?.analysisHTML(s.analysis)||'';
       $('sentenceReferenceBox').hidden=true;referenceVisible=false;
       $('revealSentence').textContent='查看参考译文';$('revealSentence').setAttribute('aria-expanded','false');
       $('sentencePrev').disabled=sentenceIndex===0;$('sentenceNext').disabled=sentenceIndex===sentenceList.length-1;
@@ -121,7 +120,7 @@
     function saveDraft() {
       const s=sentenceList[sentenceIndex];if(!s)return;
       state.drafts[s.id]={own:$('sentenceOwn').value,reason:$('sentenceReason').value,categories:[...$('sentenceErrors').querySelectorAll('input:checked')].map(x=>x.value)};
-      const ok=persist();$('sentenceStatus').textContent=ok?'理解草稿已保存到当前浏览器':'草稿暂存在本页，未能写入浏览器';
+      persist();const id=s.id,own=state.drafts[id].own;$('sentenceStatus').textContent='正在保存理解草稿…';root.StudyState.flush().then(()=>{if(sentenceList[sentenceIndex]?.id===id&&state.drafts[id]?.own===own)$('sentenceStatus').textContent='理解草稿已保存到当前浏览器';}).catch(e=>$('sentenceStatus').textContent='草稿未保存：'+e.message);
     }
     $('sentenceOwn').addEventListener('input',saveDraft);
     $('sentenceReason').addEventListener('input',saveDraft);
@@ -138,17 +137,16 @@
       $('revealSentence').textContent=referenceVisible?'收起参考译文':'查看参考译文';
       $('revealSentence').setAttribute('aria-expanded',String(referenceVisible));
     });
-    $('saveSentence').addEventListener('click',()=>{
+    $('saveSentence').addEventListener('click',async()=>{
       const s=sentenceList[sentenceIndex],draft=state.drafts[s?.id] || {};
       if(!String(draft.own||'').trim()){$('sentenceStatus').textContent='请先写下自己的理解。';$('sentenceOwn').focus();return;}
       if(!referenceVisible){$('sentenceStatus').textContent='请先查看参考译文，再判断哪里理解有误。';$('revealSentence').focus();return;}
       if(!C.saveNote(state,s,draft.own,draft.categories||[],draft.reason)){$('sentenceStatus').textContent='请选择至少一种易错原因。';$('sentenceErrors').querySelector('input').focus();return;}
-      const ok=persist();renderReview();$('saveSentence').textContent='更新错句记录';
-      $('sentenceStatus').textContent=ok?'已保存到复习页的错句本':'暂存在本页，未能写入浏览器';
+      persist();renderReview();$('saveSentence').textContent='更新错句记录';$('sentenceStatus').textContent='正在保存错句…';try{await root.StudyState.flush();if(sentenceList[sentenceIndex]?.id===s.id)$('sentenceStatus').textContent='已保存到复习页的错句本';}catch(e){$('sentenceStatus').textContent='未保存：'+e.message;}
     });
     function libraryChanged() {if(C.migrate(state,legacy,data))persist();articleChanged();renderReview();}
     return {entry,saved,toggle,prepare,renderReview,articleChanged,libraryChanged,
-      selected:()=>selected,count:()=>state.cards.length+state.notes.length+questionCount()};
+      reloadState:()=>{state=C.load(root.StudyState.get('learning',null));renderReview();articleChanged();},setReviewView:v=>{reviewView=['words','sentences','questions'].includes(v)?v:'words';renderReview();},selected:()=>selected,count:()=>state.cards.length+state.notes.length+questionCount()};
   }
   root.StudyLearning={create};
 })(window);
