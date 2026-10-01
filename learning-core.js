@@ -42,6 +42,12 @@
       allowed:w.allowed,sense:use.sense,form:use.form,context,articleKey:a.key,articleTitle:a.title,
       paragraph:use.paragraph,created:0};
   }
+  function resolveUse(data,wordKey,{article,paragraph=null,uid,form}) {
+    const uses=data.words[wordKey]?.uses || [];
+    if(uid)return uses.find(u=>u.article===article && u.uid===uid) || null;
+    if(paragraph!==null)return uses.find(u=>u.article===article && u.paragraph===paragraph && (!form || u.form.toLowerCase()===form.toLowerCase())) || null;
+    return uses.find(u=>u.article===article) || uses[0] || null;
+  }
   function articleSentences(article) {
     return article.plain.flatMap((p,paragraph)=>{
       const supplied = article.sentenceTranslations?.[paragraph];
@@ -56,13 +62,14 @@
     if (!a || !a.plain[snapshot.paragraph]?.includes(snapshot.context || snapshot.en)) return null;
     return {article:a.id,paragraph:snapshot.paragraph};
   }
-  function empty() { return {version:1,cards:[],attempts:{},drafts:{},notes:[],cursor:{},migrated:[],guessMode:false}; }
+  function empty() { return {version:1,cards:[],attempts:{},drafts:{},notes:[],cursor:{},migrated:[],trash:[],guessMode:false}; }
   function load(raw) {
     const s = empty();
     if (!raw || raw.version !== 1) return s;
     const validBase = r=>r && typeof r.id==='string' && typeof r.articleKey==='string' && Number.isInteger(r.paragraph);
     s.cards = Array.isArray(raw.cards) ? raw.cards.filter(r=>validBase(r) && ['word','wordKey','sense','context','allowed'].every(k=>typeof r[k]==='string')) : [];
-    s.notes = Array.isArray(raw.notes) ? raw.notes.filter(r=>validBase(r) && ['en','reference','own'].every(k=>typeof r[k]==='string')).map(r=>({...r,categories:(r.categories||[]).filter(c=>categories.includes(c))})) : [];
+    s.notes = Array.isArray(raw.notes) ? raw.notes.filter(r=>validBase(r) && ['en','reference','own'].every(k=>typeof r[k]==='string')).map(r=>({...r,categories:Array.isArray(r.categories)?r.categories.filter(c=>categories.includes(c)):[]})) : [];
+    s.trash = Array.isArray(raw.trash) ? raw.trash.filter(r=>r && ['word','sentence'].includes(r.kind) && validBase(r.record)).slice(-10) : [];
     for (const prop of ['attempts','drafts','cursor']) if (raw[prop] && typeof raw[prop]==='object' && !Array.isArray(raw[prop])) s[prop] = {...raw[prop]};
     s.migrated = Array.isArray(raw.migrated) ? raw.migrated.filter(x=>typeof x==='string') : [];
     s.guessMode = raw.guessMode===true;
@@ -94,7 +101,7 @@
     state.notes = [...state.notes.filter(n=>n.id!==entry.id),note];
     return true;
   }
-  const api = {sentences,contextFor,usage,articleSentences,locate,empty,load,migrate,rate,saveNote,categories};
+  const api = {sentences,contextFor,usage,resolveUse,articleSentences,locate,empty,load,migrate,rate,saveNote,categories};
   if (typeof module!=='undefined' && module.exports) module.exports=api;
   else root.StudyLearningCore=api;
 })(typeof window!=='undefined' ? window : globalThis);

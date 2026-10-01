@@ -74,3 +74,13 @@ test('imported occurrence and same lemma from another batch use independent stab
   assert.notEqual(first.id,second.id);assert.notEqual(first.allowed,second.allowed);
   assert.equal(first.context,p.articles[0].paragraphs[0].sentences[1].en);
 });
+test('a legacy annotation without an exact use never borrows another articles answer',()=>{
+  assert.equal(C.resolveUse(data,'one',{article:1,paragraph:3,form:'One'}),null);
+  const exact=C.resolveUse(data,'value',{article:1,paragraph:2,form:'value'});
+  assert.equal(exact.sense,'价值');assert.equal(exact.article,1);
+  assert.equal(C.resolveUse(data,'value',{article:14,paragraph:3,form:'value'}).sense,'重视');
+});
+test('recently removed records remain available after reload for undo',()=>{
+  const s=C.empty(),card=originalCard(0);s.trash.push({kind:'word',record:card});
+  assert.equal(C.load(JSON.parse(JSON.stringify(s))).trash[0].record.sense,'价值');
+});

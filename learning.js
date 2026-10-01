@@ -15,10 +15,12 @@
     if(C.migrate(state,legacy,data))persist();
     const entry=(word,use)=>C.usage(data,word,use);
     const saved=e=>!!e && state.cards.some(c=>c.id===e.id);
+    function stash(kind,record) {state.trash=[...state.trash,{kind,record}].slice(-10);}
     function refresh() {renderReview();changed();}
     function toggle(e) {
       if(!e){toast('该词没有正文用义，暂不能建立语境卡');return;}
       const exists=saved(e);
+      if(exists)stash('word',state.cards.find(c=>c.id===e.id));
       state.cards=exists ? state.cards.filter(c=>c.id!==e.id) : [...state.cards,{...e,created:Date.now()}];
       const ok=persist();refresh();
       if(ok)toast(exists?'已移除这张义项卡':'已收藏本次用义和原句');
@@ -31,6 +33,7 @@
       $('rateWord').hidden=!quizRevealed || !selected;
       $('revealWord').hidden=quizRevealed;
       $('saveWord').disabled=!selected;
+      $('wordPopover').querySelector('.quiz-note').hidden=!selected;
       $('wordQuiz').querySelector('label').textContent='这个词在此句是什么意思？';
       $('wordGuess').placeholder='先写下你的判断（也可以心里作答）';
       $('rateWord').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));
@@ -60,6 +63,7 @@
       $('reviewWords').setAttribute('aria-pressed',String(reviewView==='words'));
       $('reviewSentences').setAttribute('aria-pressed',String(reviewView==='sentences'));
       $('hideReviewMeanings').hidden=reviewView!=='words';
+      $('undoLearningRemove').hidden=!state.trash.length;
       $('reviewSummary').textContent=reviewView==='words'?`${state.cards.length} 张义项卡`:`${state.notes.length} 条错句 · ${state.notes.filter(n=>!n.resolved).length} 条待复习`;
       $('reviewCount').textContent=state.cards.length+state.notes.length || '';
       $('reviewList').innerHTML=reviewView==='words'
@@ -68,6 +72,12 @@
     }
     $('reviewWords').addEventListener('click',()=>{reviewView='words';renderReview();});
     $('reviewSentences').addEventListener('click',()=>{reviewView='sentences';renderReview();});
+    $('undoLearningRemove').addEventListener('click',()=>{
+      const item=state.trash.pop();if(!item)return;
+      const list=item.kind==='word'?state.cards:state.notes;
+      if(!list.some(r=>r.id===item.record.id))list.push(item.record);
+      persist();refresh();toast('已恢复上次移除的记录');
+    });
     $('hideReviewMeanings').addEventListener('click',()=>{
       hiddenAnswers=!hiddenAnswers;$('hideReviewMeanings').textContent=hiddenAnswers?'显示用义':'隐藏用义，自测一下';
       $('hideReviewMeanings').setAttribute('aria-pressed',String(hiddenAnswers));renderReview();
@@ -75,9 +85,9 @@
     $('reviewList').addEventListener('click',e=>{
       const b=e.target.closest('button');if(!b)return;
       if(b.hasAttribute('data-reveal-card')){b.closest('article').querySelector('.card-answer').hidden=false;b.hidden=true;return;}
-      if(b.dataset.removeCard){state.cards=state.cards.filter(c=>c.id!==b.dataset.removeCard);persist();refresh();}
+      if(b.dataset.removeCard){stash('word',state.cards.find(c=>c.id===b.dataset.removeCard));state.cards=state.cards.filter(c=>c.id!==b.dataset.removeCard);persist();refresh();}
       if(b.dataset.cardOrigin){const card=state.cards.find(c=>c.id===b.dataset.cardOrigin),where=card&&C.locate(data,card);if(where)navigate(where.article,where.paragraph);}
-      if(b.dataset.removeNote){state.notes=state.notes.filter(n=>n.id!==b.dataset.removeNote);persist();renderReview();}
+      if(b.dataset.removeNote){stash('sentence',state.notes.find(n=>n.id===b.dataset.removeNote));state.notes=state.notes.filter(n=>n.id!==b.dataset.removeNote);persist();renderReview();}
       if(b.dataset.resolveNote){const n=state.notes.find(n=>n.id===b.dataset.resolveNote);if(n){n.resolved=!n.resolved;persist();renderReview();}}
       if(b.dataset.editNote){const n=state.notes.find(n=>n.id===b.dataset.editNote);if(n&&C.locate(data,n))openSentence(n);}
     });

@@ -8,13 +8,13 @@
   <title>English Study · 语境阅读</title>
   <script>try{let s=JSON.parse(localStorage.getItem('english-study.reader.v1')||'{}');let t=s.settings?.theme||'system';document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;}catch{}</script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2322685f'/%3E%3Cpath d='M7 8h7l2 2 2-2h7v16h-7l-2 2-2-2H7z' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M16 10v16' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reader.css?v=20261001-learning-1">
+  <link rel="stylesheet" href="reader.css?v=20261001-learning-2">
   <script defer src="content.js?v=20260930-1"></script>
-  <script defer src="package-core.js?v=20261001-learning-1"></script>
+  <script defer src="package-core.js?v=20261001-learning-2"></script>
   <script defer src="imports.js?v=20260930-import-2"></script>
-  <script defer src="learning-core.js?v=20261001-learning-1"></script>
-  <script defer src="learning.js?v=20261001-learning-1"></script>
-  <script defer src="reader.js?v=20261001-learning-1"></script>
+  <script defer src="learning-core.js?v=20261001-learning-2"></script>
+  <script defer src="learning.js?v=20261001-learning-2"></script>
+  <script defer src="reader.js?v=20261001-learning-2"></script>
 </head>
 <body>
   <a class="skip-link" href="#reader">跳到正文</a>
@@ -67,7 +67,7 @@
         <div class="sentence-controls"><button id="sentencePrev" class="text-button">上一句</button><button id="sentenceNext" class="text-button">下一句</button><button id="saveSentence" class="primary-button">保存到错句本</button></div><p id="sentenceStatus" class="learning-meta" role="status"></p>
       </section>
       <section id="panel-translation" role="tabpanel" aria-labelledby="tab-translation" hidden><div class="panel-heading"><h2 id="translationTitle"></h2><p>按英文段落顺序意译，读完英文后再核对。</p></div><div id="translationBody" class="translation-body"></div></section>
-      <section id="panel-review" role="tabpanel" aria-labelledby="tab-review" hidden><div class="panel-heading"><h2>我的复习</h2><p>保留收藏时的具体用义和原句；同一个词的不同用义分别复习。</p></div><div class="review-switch" role="group" aria-label="复习内容"><button id="reviewWords" class="secondary-button" aria-pressed="true">义项卡</button><button id="reviewSentences" class="secondary-button" aria-pressed="false">错句本</button></div><div class="review-tools"><button id="hideReviewMeanings" class="secondary-button" aria-pressed="false">隐藏用义，自测一下</button><span id="reviewSummary"></span></div><div id="reviewList" class="word-list"></div></section>
+      <section id="panel-review" role="tabpanel" aria-labelledby="tab-review" hidden><div class="panel-heading"><h2>我的复习</h2><p>保留收藏时的具体用义和原句；同一个词的不同用义分别复习。</p></div><div class="review-switch" role="group" aria-label="复习内容"><button id="reviewWords" class="secondary-button" aria-pressed="true">义项卡</button><button id="reviewSentences" class="secondary-button" aria-pressed="false">错句本</button></div><div class="review-tools"><button id="hideReviewMeanings" class="secondary-button" aria-pressed="false">隐藏用义，自测一下</button><span id="reviewSummary"></span><button id="undoLearningRemove" class="text-button" hidden>撤销移除</button></div><div id="reviewList" class="word-list"></div></section>
       <footer class="article-footer"><button class="text-button prev-button" data-icon-before="left">上一篇</button><div><button class="text-button next-button" data-icon-after="right">下一篇</button><button id="readButton" class="primary-button">标记已读</button></div></footer>
       <p class="reading-note">原创语境训练 · 目标词首次出现加粗 · 点词查用义，点段落旁的“译”核对中文</p>
     </div>
