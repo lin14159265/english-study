@@ -51,7 +51,7 @@ window.StudyLibrary = (() => {
     const source=originalSource(), edit=extra().edits.original, result=StudyPack.validate(edit?.payload || source);
     const mapped=StudyWorkspaceCore.remapOriginal(result.compiled);
     const revised=!!edit || source!==undefined && rawEffective().some(r=>r.payload.id==='original-baseline');
-    const articles = revised ? mapped.articles : original.articles.map((a,i)=>({...a,key:`original/${a.id}`,batch:'original',batchTitle:'原始 1000 词资料',questions:mapped.articles[i].questions,sourceSignature:mapped.articles[i].sourceSignature,quizSignature:mapped.articles[i].quizSignature}));
+    const articles = revised ? mapped.articles : original.articles.map((a,i)=>({...a,key:`original/${a.id}`,batch:'original',batchTitle:'原始 1000 词资料',date:source.date,topics:[],sentenceAnalyses:mapped.articles[i].sentenceAnalyses,questions:mapped.articles[i].questions,sourceSignature:mapped.articles[i].sourceSignature,quizSignature:mapped.articles[i].quizSignature}));
     const words = Object.assign(Object.create(null),revised?mapped.words:original.words);
     if (words.desirability && !words.desirability.uses.length) words.desirability = {...words.desirability,omission:'原词表“愿望，欲求”释义存疑，不能直接当作 desire 使用。'};
     effective().filter(r=>r.payload.id!=='original-baseline').forEach(record => {
@@ -153,19 +153,8 @@ window.StudyLibrary = (() => {
     } catch (e) { status = `暂时无法检查发布目录（${e.message}）。已缓存的资料仍可读，也可本机导入。`; }
     finally { busy = false; renderManager(); }
   }
-  function preview(source) {
-    draft = null;
-    const result = StudyPack.parse(source), box = $('importPreview');
-    box.hidden = false;
-    $('confirmImport').disabled = !result.ok;
-    if (!result.ok) { box.innerHTML = `<h3>请修正后重新导入</h3><ul>${result.errors.map(e=>`<li>${escape(e)}</li>`).join('')}</ul>`; return; }
-    const payload = JSON.parse(source.replace(/^\uFEFF/,''));
-    draft = {payload,result};
-    const duplicate = local.has(payload.id) || published.has(payload.id) || payload.id==='original-baseline';
-    $('confirmImport').textContent = db ? (duplicate?'更新本机版本':'确认导入到本机') : '本次打开使用（无法保存）';
-    const s = result.summary, first = result.compiled.articles[0];
-    box.innerHTML = `<h3>${escape(payload.title)}</h3><p>${s.articles} 篇文章 · ${s.words} 个目标词 · 覆盖 ${s.used} 词${s.unused?` · ${s.unused} 词注明未用原因`:''}</p>${payload.id==='original-baseline'?'<p class="import-notice">这是原始 25 篇的修订文件；确认后保留原文章关联并使用此版本。</p>':''}${duplicate?'<p class="import-notice">同 ID 资料已存在。这次确认将保存为本机版本，仅当前浏览器生效；移除本机版本后会恢复已发布版本（如有）。</p>':''}${result.warnings.map(w=>`<p class="import-notice">${escape(w)}</p>`).join('')}<h4 lang="en">${escape(first.title)}</h4><p class="preview-english" lang="en">${escape(first.plain[0])}</p><p class="settings-note">已检查格式、段落对应、用词位置和覆盖记录。词义是否与词表一致、表达是否自然，仍需核查。</p>`;
-  }
+  function preview(source){previewBatch([{name:'粘贴内容',text:source}]);}
+  function previewBatch(files){draft=null;const r=StudyImportCore.batch(files),box=$('importPreview');box.hidden=false;$('confirmImport').disabled=!r.ok;if(!r.ok){box.innerHTML=`<h3>整批尚未导入</h3><ul>${r.errors.map(e=>`<li>${escape(e)}</li>`).join('')}</ul><p>请修正后重新选择，原资料保持不变。</p>`;return;}draft=r.rows;const updates=draft.filter(({payload:p})=>local.has(p.id)||published.has(p.id)||p.id==='original-baseline').length;$('confirmImport').textContent=db?(updates?`确认导入 ${draft.length} 份（含 ${updates} 份更新）`:`确认导入 ${draft.length} 份到本机`):'本次打开使用（无法保存）';box.innerHTML=`<h3>${draft.length} 份资料校验通过</h3>${draft.map(({payload:p,result:r})=>`<article><h4>${escape(p.title)}</h4><p>${escape(p.date)} · ${r.summary.articles} 篇 · ${r.summary.used}/${r.summary.words} 词覆盖${p.topics?.length?' · '+p.topics.map(escape).join(' / '):''}</p>${r.warnings.map(w=>`<p class="import-notice">${escape(w)}</p>`).join('')}</article>`).join('')}${updates?'<p class="import-notice">同 ID 会更新为本机版本；旧学习记录保留快照。更新前可先生成学习备份。</p>':''}<p class="settings-note">已检查格式、词形位置与证据引文；实际词义、译文和题目仍需人工核对。本批一次保存，任一校验或保存失败均不替换资料。</p>`;}
   function download(payload) {
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)+'\n'],{type:'application/json;charset=utf-8'}));
     const a = document.createElement('a'); a.href = url; a.download = `${payload.id}.json`; a.click();
@@ -174,22 +163,12 @@ window.StudyLibrary = (() => {
   function attach(callbacks) {
     hooks = callbacks;
     $('importButton').addEventListener('click',()=>{ hooks.closeAux(); removePending = null; renderManager(); $('libraryDialog').showModal(); });
-    $('packFile').addEventListener('change',async e=>{
-      const file = e.target.files[0]; if (!file) return;
-      if (file.size > 10*1024*1024) { preview(''); $('importPreview').textContent = '文件超过 10 MB，请拆分成多个资料包。'; return; }
-      try { preview(await file.text()); } catch { preview(''); $('importPreview').textContent = '无法读取这个文件，请重新选择。'; }
-    });
+    $('packFile').addEventListener('change',async e=>{const files=[...e.target.files];if(!files.length)return;if(files.length>50||files.some(f=>f.size>10*1024*1024)||files.reduce((n,f)=>n+f.size,0)>50*1024*1024){draft=null;$('confirmImport').disabled=true;$('importPreview').hidden=false;$('importPreview').textContent='每份最大 10 MB；每批最多 50 份、总计 50 MB。未修改资料。';return;}try{previewBatch(await Promise.all(files.map(async f=>({name:f.name,text:await f.text()}))));}catch{preview('');$('importPreview').textContent='无法读取文件，整批未导入。';}});
     $('previewPasted').addEventListener('click',()=>preview($('packPaste').value));
     $('confirmImport').addEventListener('click',async()=>{
       if (!draft) return;
-      const {payload,result} = draft, record = {key:`local:${payload.id}`,source:'local',payload,compiled:result.compiled};
-      $('confirmImport').disabled = true;
-      try {
-        if (db) { const {compiled,...stored} = record; await transaction('readwrite',store=>store.put(stored)); }
-        local.set(payload.id,record); changed();
-        draft = null; $('packFile').value = ''; $('packPaste').value = ''; $('importPreview').hidden = true;
-        $('libraryDialog').close(); hooks.select(payload.id);
-        hooks.toast(db?'资料已保存到当前浏览器':'资料仅用于本次打开，请保留 JSON 文件');
+      const records=draft.map(({payload,result})=>({key:`local:${payload.id}`,source:'local',payload,compiled:result.compiled}));$('confirmImport').disabled=true;
+      try {if(db)await StudyState.writePacks(store=>records.forEach(({compiled,...r})=>store.put(r)));records.forEach(r=>local.set(r.payload.id,r));changed();draft=null;$('packFile').value='';$('packPaste').value='';$('importPreview').hidden=true;$('libraryDialog').close();hooks.select(records[0].payload.id);hooks.toast(db?`${records.length} 份资料已保存到当前浏览器`:'资料仅用于本次打开，请保留 JSON 文件');
       } catch { $('confirmImport').disabled = false; hooks.toast('保存失败，未替换原资料。请保留 JSON 文件后重试。'); }
     });
     $('refreshPublished').addEventListener('click',refresh);
@@ -203,7 +182,7 @@ window.StudyLibrary = (() => {
       const id = remove.dataset.removePack;
       if (removePending !== id) { removePending = id; renderManager(); return; }
       try {
-        if (db) await transaction('readwrite',store=>store.delete(`local:${id}`));
+        if (db) await StudyState.writePacks(store=>store.delete(`local:${id}`));
         local.delete(id); removePending = null; changed(); hooks.toast('本机版本已移除；原始和已发布资料仍保留');
       } catch { hooks.toast('移除失败，请重试'); }
     });

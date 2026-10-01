@@ -44,7 +44,7 @@
     positions:raw.positionKeys && typeof raw.positionKeys === 'object' ? Object.fromEntries(Object.entries(raw.positionKeys).map(([k,v])=>[idForKey(k),v]).filter(([id])=>id)) : raw.positions && typeof raw.positions === 'object' ? raw.positions : {}
   };
   let activeTab = 'reading', selectedWord = null, wordTrigger = null, scrollTimer, toastTimer, storageWarned = false, restoring = false;
-  let learning, workspace;
+  let learning, workspace, experience;
   const current = () => data.articles[state.current - 1];
   const toast = text => { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 2500); };
   const persist = () => {
@@ -76,7 +76,8 @@
   function renderDirectory() {
     const query = $('articleSearch').value.trim().toLowerCase();
     const batch = $('batchFilter').value;
-    const articles = data.articles.filter(a => (batch==='all'||a.batch===batch) && `${a.id} ${a.title} ${a.zhTitle} ${a.batchTitle}`.toLowerCase().includes(query));
+    const readFilter=$('readFilter').value,topic=$('topicFilter').value,date=$('dateFilter').value;
+    const articles = data.articles.filter(a => (batch==='all'||a.batch===batch) && (readFilter==='all'||state.read.includes(a.id)===(readFilter==='read')) && (topic==='all'||a.topics?.includes(topic)) && (!date||a.date===date) && `${a.id} ${a.title} ${a.zhTitle} ${a.batchTitle}`.toLowerCase().includes(query));
     let lastBatch = null;
     $('articleList').innerHTML = articles.map(a => { const heading = batch==='all'&&lastBatch!==a.batch?`<p class="batch-heading">${escape(a.batchTitle)}</p>`:''; lastBatch=a.batch; return `${heading}<a href="${articleHash(a)}" data-article="${a.id}" ${a.id === state.current ? 'aria-current="page"' : ''}><span class="article-index">${state.read.includes(a.id) ? icon('check') : String(a.id).padStart(2,'0')}</span><span><span class="article-name" lang="en">${escape(a.title)}</span><span class="article-cn">${escape(a.zhTitle)}</span></span></a>`; }).join('') || '<p class="empty-state">没有匹配的文章</p>';
     $('readCount').textContent = `${state.read.length} / ${data.articles.length} 已读`;
@@ -112,7 +113,7 @@
     $('articleTitle').textContent = a.title;
     $('articleNumber').textContent = `第 ${a.id} 篇 / ${data.articles.length} 篇`;
     $('articleMeta').textContent = `${a.wordCount} 词 · ${a.words.length} 个目标词 · 约 ${Math.max(1,Math.ceil(a.wordCount / 100))} 分钟${a.batch!=='original'?` · ${a.batchTitle}`:''}`;
-    $('englishBody').innerHTML = a.paragraphs.map((p,i) => `<div class="paragraph" id="paragraph-${i}" data-paragraph="${i}"><p>${p}</p><button class="paragraph-translate" data-translate="${i}" aria-expanded="false" aria-controls="inline-translation-${i}" aria-label="查看第 ${i+1} 段译文">译</button><p class="inline-translation" id="inline-translation-${i}" lang="zh-CN" hidden>${escape(a.translations[i])}</p></div>`).join('');
+    $('englishBody').innerHTML = a.paragraphs.map((p,i) => `<div class="paragraph" id="paragraph-${i}" data-paragraph="${i}"><p>${p}</p><button class="paragraph-translate" data-translate="${i}" aria-expanded="false" aria-controls="inline-translation-${i}" aria-label="查看第 ${i+1} 段译文">译</button><button class="paragraph-study text-button" data-study-paragraph="${i}" aria-label="选择第 ${i+1} 段的句子练习">选句</button><p class="inline-translation" id="inline-translation-${i}" lang="zh-CN" hidden>${escape(a.translations[i])}</p></div>`).join('');
     $('translationTitle').textContent = a.zhTitle;
     $('translationBody').innerHTML = a.translations.map((p,i) => `<div class="translation-paragraph"><span class="number">${String(i+1).padStart(2,'0')}</span><div><p>${escape(p)}</p><button class="text-button" data-jump="${i}" data-article="${a.id}">返回这一段英文</button></div></div>`).join('');
     $('wordSearch').value = '';
@@ -120,6 +121,7 @@
     renderDirectory(); renderVocabulary(); renderReview(); updateNavigation();
     learning.articleChanged();
     workspace?.articleChanged();
+    experience?.changed();
   }
   function restoreReadingPosition(position) {
     restoring = true;
@@ -209,9 +211,10 @@
     else { setTab('reading'); requestAnimationFrame(()=>requestAnimationFrame(()=>$(`paragraph-${paragraph}`)?.scrollIntoView({block:'start'}))); }
   }
   learning = StudyLearning.create({data,current,legacy:state.review,toast,
-    changed:()=>{renderVocabulary();if(selectedWord)updateSaveWordButton();},navigate:jump,
+    changed:()=>{renderVocabulary();if(selectedWord)updateSaveWordButton();experience?.changed();},navigate:(id,p)=>{if(experience)experience.origin(data.articles[id-1].key,p,{activity:'review-list',view:'words'});else jump(id,p);},
     questionCount:()=>workspace?.wrongCount()||0,renderQuestions:()=>workspace?.renderWrongQuestions()||'',undoQuestion:()=>workspace?.undoQuestion(),removedQuestionCount:()=>workspace?.removedQuestionCount()||0,
     openSentence:snapshot=>{
+      experience?.remember({activity:'review-list',view:'sentences'});
       const id=idForKey(snapshot.articleKey);if(!id)return;
       if(id!==state.current)setArticle(id,{position:0});
       learning.articleChanged(snapshot.id);setTab('sentence');$('sentenceOwn').focus();
@@ -219,13 +222,22 @@
   });
   workspace=StudyWorkspace.create({data,current,persist:()=>{recordPosition();persist();},toast,
     closeAux:()=>{closeWord();closeDirectory();},navigate:(key,paragraph)=>{const id=idForKey(key);if(id)setArticle(id,paragraph===undefined?{}:{position:0,paragraph});},
-    selectedWord:()=>learning.selected()||(selectedWord?{word:data.words[selectedWord]?.word,paragraph:Number(wordTrigger?.closest('[data-paragraph]')?.dataset.paragraph)||0}:null),saveCard:e=>{if(!learning.saved(e))learning.toggle(e);else toast('这张义项卡已收藏');},reviewChanged:()=>{learning.renderReview();renderTabs();},
-    markRead:()=>{if(!state.read.includes(state.current))state.read.push(state.current);persist();updateNavigation();renderDirectory();}
-  });
+    selectedWord:()=>learning.selected()||(selectedWord?{word:data.words[selectedWord]?.word,wordKey:selectedWord,form:wordTrigger?.textContent,paragraph:Number(wordTrigger?.closest('[data-paragraph]')?.dataset.paragraph)||0}:null),saveCard:e=>{if(!learning.saved(e))learning.toggle(e);else toast('这张义项卡已收藏');},reviewChanged:()=>{learning.renderReview();renderTabs();},
+    markRead
+  });window.StudyWorkspaceAPI=workspace;
+  function markRead(){if(!state.read.includes(state.current))state.read.push(state.current);persist();updateNavigation();renderDirectory();experience?.changed();}
+  const captureReader=()=>({key:current().key,tab:activeTab,scroll:Math.max(0,window.scrollY)});
+  const restoreReader=r=>{const id=idForKey(r.key);if(!id){toast('原返回位置的文章已移除，保留当前文章。');return;}setArticle(id,{position:r.tab==='reading'?r.scroll:0});if(r.tab!=='reading'){setTab(r.tab);restoreReadingPosition(r.scroll);}};
+  experience=StudyExperience.create({data,current,toast,closeAux:()=>{closeWord();closeDirectory();},captureReader,restoreReader,
+    navigate:(key,p)=>{const id=idForKey(key);if(id)setArticle(id,{position:0,paragraph:p});},
+    practiceSentence:s=>{const id=idForKey(s.articleKey);if(id!==state.current)setArticle(id,{position:0});learning.articleChanged(s.id);setTab('sentence');$('sentenceOwn').focus();},
+    openReview:view=>{setTab('review');learning.setReviewView(view||'words');},refreshLearning:()=>{learning.reloadState();renderVocabulary();renderTabs();},isRead:()=>state.read.includes(state.current),
+    completeAndNext:async()=>{const handled=await workspace.finishAndNext();if(!handled){markRead();await StudyState.flush();if(validId(state.current+1))setArticle(state.current+1,{position:0});else toast('已读到最后一篇，可继续复习或导入新资料。');}}
+  });window.StudyExperienceAPI=experience;
   document.addEventListener('study-storage-warning',e=>toast(e.detail));
   paintIcons();
   $('articleSearch').addEventListener('input',renderDirectory);
-  $('batchFilter').addEventListener('change',renderDirectory);
+  $('batchFilter').addEventListener('change',renderDirectory);['readFilter','topicFilter','dateFilter'].forEach(id=>$(id).addEventListener('change',renderDirectory));$('clearFilters').addEventListener('click',()=>{$('articleSearch').value='';$('batchFilter').value='all';$('readFilter').value='all';$('topicFilter').value='all';$('dateFilter').value='';renderDirectory();});
   $('articleList').addEventListener('click',e=>{ const link=e.target.closest('[data-article]'); if (link) {e.preventDefault();setArticle(Number(link.dataset.article));} });
   $('directoryButton').addEventListener('click',openDirectory);
   $('closeDirectory').addEventListener('click',()=>closeDirectory(true));
@@ -254,7 +266,7 @@
     const save=e.target.closest('[data-save]');
     if(save){toggleSave(save.dataset.save);return;}
     const jumpButton=e.target.closest('[data-jump]');
-    if(jumpButton){jump(Number(jumpButton.dataset.article),Number(jumpButton.dataset.jump));return;}
+    if(jumpButton){experience.origin(data.articles[Number(jumpButton.dataset.article)-1].key,Number(jumpButton.dataset.jump),{activity:'reading'});return;}
     const translate=e.target.closest('[data-translate]');
     if(translate){const p=$(`inline-translation-${translate.dataset.translate}`);p.hidden=!p.hidden;translate.setAttribute('aria-expanded',String(!p.hidden));return;}
     if(!$('wordPopover').contains(e.target))closeWord();
@@ -267,7 +279,7 @@
   $('closeWord').addEventListener('click',()=>closeWord(true));
   $('wordSearch').addEventListener('input',renderVocabulary);
   $('vocabularyScope').addEventListener('change',renderVocabulary);
-  $('readButton').addEventListener('click',()=>{const wasRead=state.read.includes(state.current);state.read=wasRead?state.read.filter(n=>n!==state.current):[...state.read,state.current];persist();renderDirectory();updateNavigation();toast(wasRead?'已取消已读标记':'本篇已标记为已读');});
+  $('readButton').addEventListener('click',async()=>{const wasRead=state.read.includes(state.current);state.read=wasRead?state.read.filter(n=>n!==state.current):[...state.read,state.current];persist();renderDirectory();updateNavigation();experience.changed();try{await StudyState.flush();toast(wasRead?'已取消已读标记':'本篇已标记为已读');}catch(e){toast(e.message);}});
   $('focusButton').addEventListener('click',()=>{recordPosition();state.settings.focus=!state.settings.focus;closeDirectory();closeWord();applySettings();persist();});
   $('themeButton').addEventListener('click',()=>{state.settings.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';applySettings();persist();});
   $('settingsButton').addEventListener('click',()=>{closeWord();applySettings();$('settingsDialog').showModal();});
@@ -301,7 +313,7 @@
   else restoreReadingPosition(state.positions[state.current]);
   if(!location.hash.startsWith('#read=') || hashArticle()) history.replaceState(null,'',articleHash(current()));
   function updateLibraryControls() {
-    const selected = $('batchFilter').value;
+    const selected = $('batchFilter').value,topic=$('topicFilter').value;$('topicFilter').innerHTML='<option value="all">全部主题</option>'+[...new Set(data.articles.flatMap(a=>a.topics||[]))].sort().map(t=>`<option value="${escape(t)}">${escape(t)}</option>`).join('');if([...$('topicFilter').options].some(o=>o.value===topic))$('topicFilter').value=topic;
     $('batchFilter').innerHTML = '<option value="all">全部资料</option><option value="original">原始 1000 词资料</option>'+StudyLibrary.entries().map(r=>`<option value="${escape(r.id)}">${escape(r.title)} · ${r.source==='local'?'本机':'已发布'}</option>`).join('');
     if([...$('batchFilter').options].some(o=>o.value===selected)) $('batchFilter').value=selected;
     $('libraryCount').textContent = `${Object.keys(data.words).length} 个目标词条`;

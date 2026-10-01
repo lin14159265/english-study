@@ -40,7 +40,7 @@
     const context = contextFor(a,use);
     return {id:key(['word',wordKey,use.sense,a.key,use.paragraph,context]),wordKey,word:w.word,
       allowed:w.allowed,sense:use.sense,form:use.form,context,articleKey:a.key,articleTitle:a.title,
-      paragraph:use.paragraph,created:0};
+      paragraph:use.paragraph,...(Number.isInteger(use.start)?{start:use.start}:{}),created:0};
   }
   function resolveUse(data,wordKey,{article,paragraph=null,uid,form}) {
     const uses=data.words[wordKey]?.uses || [];
@@ -54,7 +54,7 @@
       const parts = supplied?.length ? supplied : sentences(p);
       return parts.map((s,index)=>({id:key(['sentence',article.key,paragraph,s.en]),articleKey:article.key,
         articleTitle:article.title,paragraph,index,en:s.en,
-        reference:s.zh || article.translations[paragraph],referenceKind:s.zh ? 'sentence' : 'paragraph'}));
+        reference:s.zh || article.translations[paragraph],referenceKind:s.zh ? 'sentence' : 'paragraph',...(article.sentenceAnalyses?.[paragraph]?.find(a=>a.quote===s.en)?{analysis:article.sentenceAnalyses[paragraph].find(a=>a.quote===s.en)}:{})}));
     });
   }
   function locate(data, snapshot) {
