@@ -86,9 +86,10 @@
     }return s;}
     function rewrite(v){if(typeof v==='string')return rewriteString(v);if(Array.isArray(v))return v.map(rewrite);if(object(v))return Object.fromEntries(Object.entries(v).map(([k,v])=>[rewriteString(k),rewrite(v)]));return v;}
     copy.state=rewrite(copy.state);
-    if(mapping.original){const id=mapping.original;delete copy.state.extra.edits.original;for(const card of copy.state.learning.cards)if(card.articleKey.startsWith(id+'/')){const oldId=card.id;card.wordKey=`${id}::${card.wordKey}`;card.id=JSON.stringify(['word',card.wordKey,card.sense,card.articleKey,card.paragraph,card.context]);if(copy.state.learning.attempts[oldId]){copy.state.learning.attempts[card.id]=copy.state.learning.attempts[oldId];delete copy.state.learning.attempts[oldId];}}}
+    if(mapping.original){const id=mapping.original;delete copy.state.extra.edits.original;const cards=[...copy.state.learning.cards,...copy.state.learning.trash.filter(t=>t.kind==='word').map(t=>t.record)];for(const card of cards)if(card.articleKey.startsWith(id+'/')){const oldId=card.id;card.wordKey=`${id}::${card.wordKey}`;card.id=JSON.stringify(['word',card.wordKey,card.sense,card.articleKey,card.paragraph,card.context]);if(copy.state.learning.attempts[oldId]){copy.state.learning.attempts[card.id]=copy.state.learning.attempts[oldId];delete copy.state.learning.attempts[oldId];}}}
     if(mapping.original){const id=mapping.original,p=copy.packs.find(p=>p.id===id);for(const [key,d]of Object.entries(copy.state.extra.editorDrafts))if(key.startsWith(id+'/')){d.payload.id=id;d.baseHash=hash(p);}}
     for(const [old,id]of Object.entries(mapping)){if(old==='original')continue;const e=copy.state.extra.edits[id];if(e){e.payload.id=id;e.baseHash=hash(copy.packs.find(p=>p.id===id));}}
+    const undo=copy.state.extra.editUndo;if(undo){if(mapping.original&&undo.sourceId==='original')undo.sourceId=mapping.original;if(Object.values(mapping).includes(undo.sourceId)&&undo.edit){undo.edit.payload.id=undo.sourceId;undo.edit.baseHash=hash(copy.packs.find(p=>p.id===undo.sourceId));}}
     return copy;
   }
   function restorePlan(current,incoming,mode='merge',prefer='current'){

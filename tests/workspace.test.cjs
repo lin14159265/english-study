@@ -44,3 +44,9 @@ test('independent original revisions keep old cards with the copied original sou
  const r=C.restorePlan(a,b,'merge','copy'),copied=r.backup.packs.find(p=>p.id.startsWith('original-copy-'));
  assert.ok(copied);assert.ok(r.backup.state.learning.cards[0].wordKey.startsWith(copied.id+'::'));assert.equal(r.backup.state.learning.cards[0].articleKey,copied.id+'/article-01');assert.equal(C.validateBackup(r.backup).ok,true);
 });
+test('original conflict copies keep removed cards and revision undo attached to the copy',()=>{
+ const a=backup(),b=backup(),revision={payload:C.clone(base),baseHash:C.hash(base)};revision.payload.articles[0].paragraphs[0].zh+='（修订）';b.state.extra.edits.original=revision;b.state.extra.editUndo={sourceId:'original',edit:{payload:C.clone(base),baseHash:C.hash(base)}};
+ const mapped=C.remapOriginal(P.validate(revision.payload).compiled),card=L.usage(mapped,'value',mapped.words.value.uses[0]);b.state.learning.trash.push({kind:'word',record:card});b.state.learning.attempts[card.id]={rating:'known',guess:'价值',at:1};
+ const r=C.restorePlan(a,b,'merge','copy').backup,id=r.packs.find(p=>p.id.startsWith('original-copy-')).id,removed=r.state.learning.trash[0].record;
+ assert.equal(removed.wordKey,id+'::value');assert.equal(removed.articleKey,id+'/article-01');assert.ok(r.state.learning.attempts[removed.id]);assert.equal(r.state.extra.editUndo.sourceId,id);assert.equal(r.state.extra.editUndo.edit.payload.id,id);assert.equal(C.validateBackup(r).ok,true);
+});

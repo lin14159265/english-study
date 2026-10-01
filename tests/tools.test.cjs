@@ -29,6 +29,11 @@ test('search joins measured with its recorded lemma and keeps exact senses acros
  const rows=T.search(d,L.empty(),'measured');assert.ok(rows.length>=2);assert.ok(rows.some(r=>r.sense==='测量'));assert.ok(rows.some(r=>r.sense==='措施'));
  assert.ok(T.search(d,L.empty(),'measure',{batch:'second-batch'}).every(r=>r.batch==='second-batch'));
 });
+test('a recorded inflection finds different forms of the same lemma in another batch',()=>{
+ const a=compiled(example),b=T.clone(example);b.id='second-form';const p=b.articles[0].paragraphs[0];p.en=p.en.replace('measured','measures');delete p.sentences;delete b.articles[0].questions;b.articles[0].uses.find(u=>u.word==='measure').form='measures';
+ const d=compiled(b);d.articles.forEach(x=>x.id+=a.articles.length);Object.values(d.words).forEach(w=>w.uses.forEach(u=>u.article+=a.articles.length));
+ const rows=T.search({articles:[...a.articles,...d.articles],words:{...a.words,...d.words}},L.empty(),'measured');assert.ok(rows.some(r=>r.batch==='second-form'&&r.form==='measures'&&r.allowed===b.words.find(w=>w.word==='measure').allowed));
+});
 test('search preserves deleted context snapshots and leaves unaudited occurrences unlabeled',()=>{
  const d=compiled(example),w=Object.entries(d.words).find(([k,w])=>w.word==='measure'),entry=L.usage(d,w[0],w[1].uses[0]),s=L.empty();s.cards.push(entry);
  assert.ok(T.search({articles:[],words:{}},s,'measure').some(r=>r.kind==='snapshot'&&!r.article));

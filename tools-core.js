@@ -12,7 +12,8 @@
   const contextAt=(text,start)=>L.sentences(text).find(s=>start>=s.start&&start<s.end)?.en || text;
   function search(data,learning,query,{batch='all',sense='',scope='all'}={}){
     const q=query.trim().toLowerCase(), result=[];if(!q)return result;
-    const wordEntries=Object.entries(data.words).filter(([key,w])=>w.word.toLowerCase()===q || w.uses.some(u=>u.form.toLowerCase()===q));
+    const candidates=Object.entries(data.words).filter(([key,w])=>w.word.toLowerCase()===q || w.uses.some(u=>u.form.toLowerCase()===q)),lemmas=new Set(candidates.map(([k,w])=>w.word.toLowerCase()));
+    const wordEntries=Object.entries(data.words).filter(([k,w])=>lemmas.has(w.word.toLowerCase()));
     const byLemma=wordEntries.length>0;
     if(scope!=='snapshots')for(const a of data.articles){
       if(batch!=='all'&&a.batch!==batch)continue;
@@ -25,11 +26,11 @@
             const own=Object.entries(data.words).find(([k,v])=>v.word.toLowerCase()===w.word.toLowerCase()&&(a.batch==='original'?!k.includes('::'):k.startsWith(a.batch+'::')));
             const use=own?.[1].uses.find(u=>u.article===a.id&&u.paragraph===pi&&(Number.isInteger(u.start)?u.start===m.start:u.form.toLowerCase()===m.form.toLowerCase()&&P.matches(p,u.form).length===1));
             const context=contextAt(p,m.start), entry=use?L.usage(data,own[0],use):null;
-            matches.push({id:`${a.key}:${pi}:${m.start}`,word:w.word,form:m.form,sense:use?.sense||'',context,paragraph:pi,articleKey:a.key,articleTitle:a.title,batch:a.batch,article:a.id,entry,kind:'current',start:m.start,end:m.end});
+            matches.push({id:`${a.key}:${pi}:${m.start}`,word:w.word,form:m.form,sense:use?.sense||'',context,paragraph:pi,articleKey:a.key,articleTitle:a.title,batch:a.batch,article:a.id,entry,allowed:own?.[1].allowed||'',kind:'current',start:m.start,end:m.end});
           }
         }}else{
           const chinese=/[\u3400-\u9fff]/.test(q);
-          if(chinese){for(const [key,w]of Object.entries(data.words))for(const use of w.uses.filter(u=>u.article===a.id&&u.paragraph===pi&&u.sense.toLowerCase().includes(q))){const entry=L.usage(data,key,use);if(entry)matches.push({id:entry.id,word:w.word,form:use.form,sense:use.sense,context:entry.context,paragraph:pi,articleKey:a.key,articleTitle:a.title,batch:a.batch,article:a.id,entry,kind:'current'});}}
+          if(chinese){for(const [key,w]of Object.entries(data.words))for(const use of w.uses.filter(u=>u.article===a.id&&u.paragraph===pi&&u.sense.toLowerCase().includes(q))){const entry=L.usage(data,key,use);if(entry)matches.push({id:entry.id,word:w.word,form:use.form,sense:use.sense,context:entry.context,paragraph:pi,articleKey:a.key,articleTitle:a.title,batch:a.batch,article:a.id,entry,allowed:w.allowed,kind:'current'});}}
           else {const start=p.toLowerCase().indexOf(q);if(start>=0)matches.push({id:`${a.key}:${pi}:fragment`,word:'句子片段',sense:'',context:contextAt(p,start),paragraph:pi,articleKey:a.key,articleTitle:a.title,batch:a.batch,article:a.id,kind:'current'});}
         }
         result.push(...matches.filter(r=>!sense || r.sense.includes(sense)));
@@ -40,7 +41,7 @@
       if(!text.includes(q)&&!(byLemma&&wordEntries.some(([k,w])=>w.word.toLowerCase()===record.word?.toLowerCase())))continue;
       const b=record.articleKey.split('/')[0];if(batch!=='all'&&b!==batch)continue;if(sense&&!record.sense?.includes(sense))continue;
       const where=L.locate(data,record);
-      result.push({id:`snapshot:${record.id}`,word:record.word||'错句快照',form:record.form,sense:record.sense||'',context:record.context||record.en,articleTitle:record.articleTitle,articleKey:record.articleKey,paragraph:record.paragraph,batch:b,article:where?.article,kind:'snapshot',locatable:!!where});
+      result.push({id:`snapshot:${record.id}`,word:record.word||'错句快照',form:record.form,sense:record.sense||'',context:record.context||record.en,articleTitle:record.articleTitle,articleKey:record.articleKey,paragraph:record.paragraph,batch:b,article:where?.article,kind:'snapshot',allowed:record.allowed||'',locatable:!!where});
     }
     return result;
   }

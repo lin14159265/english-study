@@ -219,7 +219,7 @@
   });
   workspace=StudyWorkspace.create({data,current,persist:()=>{recordPosition();persist();},toast,
     closeAux:()=>{closeWord();closeDirectory();},navigate:(key,paragraph)=>{const id=idForKey(key);if(id)setArticle(id,paragraph===undefined?{}:{position:0,paragraph});},
-    selectedWord:()=>learning.selected(),saveCard:e=>{if(!learning.saved(e))learning.toggle(e);else toast('这张义项卡已收藏');},reviewChanged:()=>{learning.renderReview();renderTabs();},
+    selectedWord:()=>learning.selected()||(selectedWord?{word:data.words[selectedWord]?.word,paragraph:Number(wordTrigger?.closest('[data-paragraph]')?.dataset.paragraph)||0}:null),saveCard:e=>{if(!learning.saved(e))learning.toggle(e);else toast('这张义项卡已收藏');},reviewChanged:()=>{learning.renderReview();renderTabs();},
     markRead:()=>{if(!state.read.includes(state.current))state.read.push(state.current);persist();updateNavigation();renderDirectory();}
   });
   document.addEventListener('study-storage-warning',e=>toast(e.detail));
