@@ -33,19 +33,54 @@ window.StudyLibrary = (() => {
       } catch (e) { reject(e); }
     });
   }
-  function effective() {
+  function rawEffective() {
     return [...new Map([...published,...local]).values()].sort((a,b)=>a.payload.date.localeCompare(b.payload.date) || a.payload.id.localeCompare(b.payload.id));
   }
+  const extra = () => window.StudyState?.get('extra',StudyWorkspaceCore.emptyExtra()) || StudyWorkspaceCore.emptyExtra();
+  function effective() {
+    const records = new Map(rawEffective().map(r=>[r.payload.id,r]));
+    for(const [id,e] of Object.entries(extra().edits)) {
+      if(id==='original')continue;
+      const checked=StudyPack.validate(e.payload);
+      if(checked.ok)records.set(id,{...(records.get(id)||{source:'local'}),payload:e.payload,compiled:checked.compiled,revised:true});
+    }
+    return [...records.values()];
+  }
+  function originalSource() {return rawEffective().find(r=>r.payload.id==='original-baseline')?.payload || StudyWorkspaceCore.originalPack(original);}
   function rebuild() {
-    const articles = original.articles.map(a=>({...a,key:`original/${a.id}`,batch:'original',batchTitle:'原始 1000 词资料'}));
-    const words = Object.assign(Object.create(null),original.words);
-    if (words.desirability) words.desirability = {...words.desirability,omission:'原词表“愿望，欲求”释义存疑，不能直接当作 desire 使用。'};
-    effective().forEach(record => {
+    const source=originalSource(), edit=extra().edits.original, result=StudyPack.validate(edit?.payload || source);
+    const mapped=StudyWorkspaceCore.remapOriginal(result.compiled);
+    const revised=!!edit || source!==undefined && rawEffective().some(r=>r.payload.id==='original-baseline');
+    const articles = revised ? mapped.articles : original.articles.map((a,i)=>({...a,key:`original/${a.id}`,batch:'original',batchTitle:'原始 1000 词资料',questions:mapped.articles[i].questions,sourceSignature:mapped.articles[i].sourceSignature,quizSignature:mapped.articles[i].quizSignature}));
+    const words = Object.assign(Object.create(null),revised?mapped.words:original.words);
+    if (words.desirability && !words.desirability.uses.length) words.desirability = {...words.desirability,omission:'原词表“愿望，欲求”释义存疑，不能直接当作 desire 使用。'};
+    effective().filter(r=>r.payload.id!=='original-baseline').forEach(record => {
       const pack = record.compiled, offset = articles.length;
       pack.articles.forEach(a=>articles.push({...a,id:a.id+offset}));
       Object.entries(pack.words).forEach(([k,w])=>{ words[k] = {...w,uses:w.uses.map(u=>({...u,article:u.article+offset}))}; });
     });
     data.articles = articles; data.words = words;
+  }
+  function model(key) {
+    const id=key.startsWith('original/')?'original':key.split('/')[0];
+    const raw=id==='original'?originalSource():rawEffective().find(r=>r.payload.id===id)?.payload;
+    const edit=extra().edits[id], payload=edit?.payload || raw;
+    if(!payload)return null;
+    const index=id==='original'?Number(key.split('/')[1])-1:payload.articles.findIndex(a=>`${id}/${a.id}`===key);
+    return index<0?null:{sourceId:id,payload:StudyWorkspaceCore.clone(payload),baseHash:raw?StudyWorkspaceCore.hash(raw):null,index,conflict:!!edit && (!raw || edit.baseHash!==StudyWorkspaceCore.hash(raw))};
+  }
+  async function saveRevision(id,payload) {
+    const result=StudyPack.validate(payload);if(!result.ok)throw new Error(result.errors.join('；'));
+    if(id==='original' && (payload.id!=='original-baseline' || payload.articles.length!==25 || payload.articles.some((a,i)=>a.id!==`article-${String(i+1).padStart(2,'0')}`)))throw new Error('原始资料修订需保留 25 篇文章及其原 ID。');
+    const x=extra(), old=x.edits[id], raw=id==='original'?originalSource():rawEffective().find(r=>r.payload.id===id)?.payload;
+    x.editUndo={sourceId:id,edit:old||null};
+    x.edits[id]={payload:StudyWorkspaceCore.clone(payload),baseHash:old?.baseHash || (raw?StudyWorkspaceCore.hash(raw):null),at:new Date().toISOString()};
+    window.StudyState.set('extra',x);await window.StudyState.flush();changed();
+  }
+  async function resetRevision(id,undo=false) {
+    const x=extra();if(undo){if(x.editUndo?.sourceId!==id)throw new Error('没有可撤销的修订');const previous=x.editUndo.edit;delete x.editUndo;if(previous)x.edits[id]=previous;else delete x.edits[id];}
+    else {x.editUndo={sourceId:id,edit:x.edits[id]||null};delete x.edits[id];}
+    window.StudyState.set('extra',x);await window.StudyState.flush();changed();
   }
   async function open(base) {
     original = base; data = {...base}; db = await openDB();
@@ -61,7 +96,7 @@ window.StudyLibrary = (() => {
     } else storageStatus = '浏览器未允许本机保存。导入只能用于本次打开，请保留 JSON 文件。';
     rebuild(); return data;
   }
-  const entries = () => effective().map(r=>({id:r.payload.id,title:r.payload.title,date:r.payload.date,source:r.source,articles:r.compiled.articles.length,words:r.payload.words.length,used:r.payload.words.length-r.compiled.unused.length,override:r.source==='local'&&published.has(r.payload.id)}));
+  const entries = () => effective().filter(r=>r.payload.id!=='original-baseline').map(r=>({id:r.payload.id,title:r.payload.title,date:r.payload.date,source:r.source,articles:r.compiled.articles.length,words:r.payload.words.length,used:r.payload.words.length-r.compiled.unused.length,override:r.source==='local'&&published.has(r.payload.id)}));
   function renderManager() {
     $('publishedStatus').textContent = status;
     $('storageStatus').textContent = storageStatus;
@@ -126,10 +161,10 @@ window.StudyLibrary = (() => {
     if (!result.ok) { box.innerHTML = `<h3>请修正后重新导入</h3><ul>${result.errors.map(e=>`<li>${escape(e)}</li>`).join('')}</ul>`; return; }
     const payload = JSON.parse(source.replace(/^\uFEFF/,''));
     draft = {payload,result};
-    const duplicate = local.has(payload.id) || published.has(payload.id);
+    const duplicate = local.has(payload.id) || published.has(payload.id) || payload.id==='original-baseline';
     $('confirmImport').textContent = db ? (duplicate?'更新本机版本':'确认导入到本机') : '本次打开使用（无法保存）';
     const s = result.summary, first = result.compiled.articles[0];
-    box.innerHTML = `<h3>${escape(payload.title)}</h3><p>${s.articles} 篇文章 · ${s.words} 个目标词 · 覆盖 ${s.used} 词${s.unused?` · ${s.unused} 词注明未用原因`:''}</p>${duplicate?'<p class="import-notice">同 ID 资料已存在。这次确认将保存为本机版本，仅当前浏览器生效；移除本机版本后会恢复已发布版本（如有）。</p>':''}${result.warnings.map(w=>`<p class="import-notice">${escape(w)}</p>`).join('')}<h4 lang="en">${escape(first.title)}</h4><p class="preview-english" lang="en">${escape(first.plain[0])}</p><p class="settings-note">已检查格式、段落对应、用词位置和覆盖记录。词义是否与词表一致、表达是否自然，仍需核查。</p>`;
+    box.innerHTML = `<h3>${escape(payload.title)}</h3><p>${s.articles} 篇文章 · ${s.words} 个目标词 · 覆盖 ${s.used} 词${s.unused?` · ${s.unused} 词注明未用原因`:''}</p>${payload.id==='original-baseline'?'<p class="import-notice">这是原始 25 篇的修订文件；确认后保留原文章关联并使用此版本。</p>':''}${duplicate?'<p class="import-notice">同 ID 资料已存在。这次确认将保存为本机版本，仅当前浏览器生效；移除本机版本后会恢复已发布版本（如有）。</p>':''}${result.warnings.map(w=>`<p class="import-notice">${escape(w)}</p>`).join('')}<h4 lang="en">${escape(first.title)}</h4><p class="preview-english" lang="en">${escape(first.plain[0])}</p><p class="settings-note">已检查格式、段落对应、用词位置和覆盖记录。词义是否与词表一致、表达是否自然，仍需核查。</p>`;
   }
   function download(payload) {
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)+'\n'],{type:'application/json;charset=utf-8'}));
@@ -162,7 +197,7 @@ window.StudyLibrary = (() => {
       const open = e.target.closest('[data-open-pack]');
       if (open) { $('libraryDialog').close(); hooks.select(open.dataset.openPack); return; }
       const exported = e.target.closest('[data-export-pack]');
-      if (exported) { download((local.get(exported.dataset.exportPack)||published.get(exported.dataset.exportPack)).payload); return; }
+      if (exported) { download(effective().find(r=>r.payload.id===exported.dataset.exportPack).payload); return; }
       const remove = e.target.closest('[data-remove-pack]');
       if (!remove) return;
       const id = remove.dataset.removePack;
@@ -174,5 +209,5 @@ window.StudyLibrary = (() => {
     });
     renderManager(); refresh();
   }
-  return {open,attach,entries,payloads:()=>effective().map(r=>StudyWorkspaceCore.clone(r.payload))};
+  return {open,attach,entries,model,saveRevision,resetRevision,payloads:()=>rawEffective().map(r=>StudyWorkspaceCore.clone(r.payload))};
 })();

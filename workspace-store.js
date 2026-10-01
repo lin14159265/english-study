@@ -24,12 +24,12 @@ window.StudyState=(()=>{
   async function packs(){return await transaction(['packs'],'readonly',tx=>tx.objectStore('packs').getAll());}
   async function restore(backup,base){
     if(restoring)throw new Error('正在恢复，请稍候。');const valid=C.validateBackup(backup);if(!valid.ok)throw new Error(valid.errors[0]);await flush();restoring=true;
-    try{const before=await packs(),data=C.clone(backup.state);if(C.hash(base)!==C.hash(backup.base))data.extra.edits.original={payload:C.clone(backup.base),baseHash:C.hash(base),restored:true,at:Date.now()};
+    try{const before=await packs(),data=C.clone(backup.state);if(!data.extra.edits.original && C.hash(base)!==C.hash(backup.base))data.extra.edits.original={payload:C.clone(backup.base),baseHash:C.hash(base),restored:true,at:Date.now()};
       await transaction(['packs','workspace'],'readwrite',tx=>{const p=tx.objectStore('packs'),w=tx.objectStore('workspace');w.put({key:'rollback',data:C.clone(value),packs:before});p.clear();backup.packs.forEach(payload=>p.put({key:`local:${payload.id}`,source:'local',payload:C.clone(payload)}));w.put({key:'current',data});});
       value=data;revision++;written=revision;for(const k of Object.keys(legacy))try{localStorage.setItem(legacy[k],JSON.stringify(value[k]));}catch{}
     }finally{restoring=false;}
   }
-  async function rollback(){await flush();const old=await transaction(['workspace'],'readonly',tx=>tx.objectStore('workspace').get('rollback'));if(!old)throw new Error('没有可回退的恢复记录。');restoring=true;try{await transaction(['packs','workspace'],'readwrite',tx=>{const p=tx.objectStore('packs');p.clear();old.packs.forEach(r=>p.put(r));tx.objectStore('workspace').put({key:'current',data:old.data});tx.objectStore('workspace').delete('rollback');});value=old.data;revision++;written=revision;}finally{restoring=false;}}
+  async function rollback(){await flush();const old=await transaction(['workspace'],'readonly',tx=>tx.objectStore('workspace').get('rollback'));if(!old)throw new Error('没有可回退的恢复记录。');restoring=true;try{await transaction(['packs','workspace'],'readwrite',tx=>{const p=tx.objectStore('packs');p.clear();old.packs.forEach(r=>p.put(r));tx.objectStore('workspace').put({key:'current',data:old.data});tx.objectStore('workspace').delete('rollback');});value=old.data;revision++;written=revision;for(const k of Object.keys(legacy))try{localStorage.setItem(legacy[k],JSON.stringify(value[k]));}catch{}}finally{restoring=false;}}
   window.addEventListener('pagehide',()=>flush().catch(()=>{}));
   return {open,get,set,flush,restore,rollback,packs,transaction,database:()=>db,warning:()=>warning};
 })();

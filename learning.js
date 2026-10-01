@@ -4,7 +4,7 @@
   const esc = s=>root.StudyPack.escape(s ?? '');
   const labels = {known:'认识',uncertain:'模糊','wrong-sense':'误用了另一个义项'};
   const KEY = 'english-study.learning.v1';
-  function create({data,current,legacy,toast,changed,navigate,openSentence}) {
+  function create({data,current,legacy,toast,changed,navigate,openSentence,questionCount,renderQuestions,undoQuestion,removedQuestionCount}) {
     const raw=root.StudyState.get('learning',null);
     const state=C.load(raw);
     let selected=null,reviewView='words',hiddenAnswers=false,quizRevealed=false,sentenceList=[],sentenceIndex=0,referenceVisible=false;
@@ -62,17 +62,20 @@
     function renderReview() {
       $('reviewWords').setAttribute('aria-pressed',String(reviewView==='words'));
       $('reviewSentences').setAttribute('aria-pressed',String(reviewView==='sentences'));
+      $('reviewQuestions').setAttribute('aria-pressed',String(reviewView==='questions'));
       $('hideReviewMeanings').hidden=reviewView!=='words';
-      $('undoLearningRemove').hidden=!state.trash.length;
-      $('reviewSummary').textContent=reviewView==='words'?`${state.cards.length} 张义项卡`:`${state.notes.length} 条错句 · ${state.notes.filter(n=>!n.resolved).length} 条待复习`;
-      $('reviewCount').textContent=state.cards.length+state.notes.length || '';
-      $('reviewList').innerHTML=reviewView==='words'
+      $('undoLearningRemove').hidden=reviewView==='questions'?!removedQuestionCount():!state.trash.length;
+      $('reviewSummary').textContent=reviewView==='questions'?`${questionCount()} 道阅读错题`:reviewView==='words'?`${state.cards.length} 张义项卡`:`${state.notes.length} 条错句 · ${state.notes.filter(n=>!n.resolved).length} 条待复习`;
+      $('reviewCount').textContent=state.cards.length+state.notes.length+questionCount() || '';
+      $('reviewList').innerHTML=reviewView==='questions'?renderQuestions():reviewView==='words'
         ? [...state.cards].reverse().map(wordCard).join('') || '<p class="empty-state">还没有义项卡。点击正文目标词，收藏本次用义和原句。</p>'
         : [...state.notes].reverse().map(noteCard).join('') || '<p class="empty-state">还没有错句。到“逐句练习”写下理解、核对参考，再保存需要复习的句子。</p>';
     }
+    $('reviewQuestions').addEventListener('click',()=>{reviewView='questions';renderReview();});
     $('reviewWords').addEventListener('click',()=>{reviewView='words';renderReview();});
     $('reviewSentences').addEventListener('click',()=>{reviewView='sentences';renderReview();});
     $('undoLearningRemove').addEventListener('click',()=>{
+      if(reviewView==='questions'){undoQuestion();return;}
       const item=state.trash.pop();if(!item)return;
       const list=item.kind==='word'?state.cards:state.notes;
       if(!list.some(r=>r.id===item.record.id))list.push(item.record);
@@ -145,7 +148,7 @@
     });
     function libraryChanged() {if(C.migrate(state,legacy,data))persist();articleChanged();renderReview();}
     return {entry,saved,toggle,prepare,renderReview,articleChanged,libraryChanged,
-      selected:()=>selected,count:()=>state.cards.length+state.notes.length};
+      selected:()=>selected,count:()=>state.cards.length+state.notes.length+questionCount()};
   }
   root.StudyLearning={create};
 })(window);

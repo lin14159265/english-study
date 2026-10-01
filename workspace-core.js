@@ -8,11 +8,11 @@
   const canonical=x=>Array.isArray(x)?'['+x.map(canonical).join(',')+']':object(x)?'{'+Object.keys(x).sort().map(k=>JSON.stringify(k)+':'+canonical(x[k])).join(',')+'}':JSON.stringify(x);
   function hash(x){const s=canonical(x);let a=2166136261,b=5381;for(let i=0;i<s.length;i++){a=Math.imul(a^s.charCodeAt(i),16777619);b=Math.imul(b,33)^s.charCodeAt(i);}return `${s.length}-${(a>>>0).toString(16)}-${(b>>>0).toString(16)}`;}
   const articleHash=a=>hash({paragraphs:a.paragraphs.map(p=>p.en),uses:a.uses});
-  function originalPack(base){
+  function originalPack(base,samples=base.sampleQuestions||root.StudySampleQuestions||{}){
     const words=Object.entries(base.words).map(([word,w])=>({word:w.word,allowed:w.allowed,...(!w.uses.length?{omission:w.omission||'原词表义项存疑，暂未用于正文。'}:{})}));
     const articles=base.articles.map(a=>({id:`article-${String(a.id).padStart(2,'0')}`,title:a.title,zhTitle:a.zhTitle,
       paragraphs:a.plain.map((en,i)=>({en,zh:a.translations[i],...(a.sentenceTranslations?.[i]?{sentences:clone(a.sentenceTranslations[i])}:{})})),
-      uses:Object.entries(base.words).flatMap(([word,w])=>w.uses.filter(u=>u.article===a.id).map(u=>({word:w.word,paragraph:u.paragraph+1,form:u.form,sense:u.sense,occurrence:Number.isInteger(u.start)?Math.max(1,P.matches(a.plain[u.paragraph],u.form).findIndex(m=>m.start===u.start)+1):1})))}));
+      uses:Object.entries(base.words).flatMap(([word,w])=>w.uses.filter(u=>u.article===a.id).map(u=>({word:w.word,paragraph:u.paragraph+1,form:u.form,sense:u.sense,occurrence:Number.isInteger(u.start)?Math.max(1,P.matches(a.plain[u.paragraph],u.form).findIndex(m=>m.start===u.start)+1):1}))),...(samples[a.id]?{questions:clone(samples[a.id])}:{})}));
     return {format:'english-study-pack',version:1,id:'original-baseline',title:'原始 1000 词资料',date:base.date,sourceCount:words.length,words,articles};
   }
   function remapOriginal(compiled){

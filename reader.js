@@ -119,6 +119,7 @@
     $('vocabularyScope').value = 'article';
     renderDirectory(); renderVocabulary(); renderReview(); updateNavigation();
     learning.articleChanged();
+    workspace?.articleChanged();
   }
   function restoreReadingPosition(position) {
     restoring = true;
@@ -209,13 +210,18 @@
   }
   learning = StudyLearning.create({data,current,legacy:state.review,toast,
     changed:()=>{renderVocabulary();if(selectedWord)updateSaveWordButton();},navigate:jump,
+    questionCount:()=>workspace?.wrongCount()||0,renderQuestions:()=>workspace?.renderWrongQuestions()||'',undoQuestion:()=>workspace?.undoQuestion(),removedQuestionCount:()=>workspace?.removedQuestionCount()||0,
     openSentence:snapshot=>{
       const id=idForKey(snapshot.articleKey);if(!id)return;
       if(id!==state.current)setArticle(id,{position:0});
       learning.articleChanged(snapshot.id);setTab('sentence');$('sentenceOwn').focus();
     }
   });
-  workspace=StudyWorkspace.create({data,current,persist:()=>{recordPosition();persist();},toast});
+  workspace=StudyWorkspace.create({data,current,persist:()=>{recordPosition();persist();},toast,
+    closeAux:()=>{closeWord();closeDirectory();},navigate:(key,paragraph)=>{const id=idForKey(key);if(id)setArticle(id,paragraph===undefined?{}:{position:0,paragraph});},
+    selectedWord:()=>learning.selected(),saveCard:e=>{if(!learning.saved(e))learning.toggle(e);else toast('这张义项卡已收藏');},reviewChanged:()=>{learning.renderReview();renderTabs();},
+    markRead:()=>{if(!state.read.includes(state.current))state.read.push(state.current);persist();updateNavigation();renderDirectory();}
+  });
   document.addEventListener('study-storage-warning',e=>toast(e.detail));
   paintIcons();
   $('articleSearch').addEventListener('input',renderDirectory);
@@ -307,6 +313,7 @@
     state.read = state.readKeys.map(idForKey).filter(Boolean);
     state.positions = Object.fromEntries(Object.entries(state.positionKeys).map(([k,v])=>[idForKey(k),v]).filter(([id])=>id));
     learning.libraryChanged();
+    workspace.changed();
     updateLibraryControls(); renderArticle(); renderTabs(); persist();
     history.replaceState(null,'',articleHash(current()));
     if(activeTab==='reading')restoreReadingPosition(state.positions[state.current]);

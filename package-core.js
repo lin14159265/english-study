@@ -16,6 +16,21 @@
     }
     return out;
   }
+  function signature(a){const s=JSON.stringify([a.paragraphs.map(p=>p?.en||''),(a.uses||[]).map(u=>[u?.word||'',u?.paragraph,u?.form||'',u?.occurrence||1,u?.sense||'']).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))]);let h=2166136261;for(let i=0;i<s.length;i++)h=Math.imul(h^s.charCodeAt(i),16777619);return `${s.length}-${(h>>>0).toString(16)}`;}
+  function questions(a,plain,fail,label){
+    if(a.questions===undefined)return [];
+    if(!Array.isArray(a.questions)||a.questions.length>20){fail(`${label} questions 最多 20 道题。`);return [];}
+    const ids=new Set(),stamp=signature(a),out=[];
+    for(const q of a.questions){
+      if(!object(q)||!slug(q.id)||ids.has(q.id)||!text(q.prompt,2000)||!text(q.explanation,5000)){fail(`${label} 小测题目需要唯一 id、题干 prompt 和解析 explanation。`);continue;}ids.add(q.id);
+      if(!Array.isArray(q.choices)||q.choices.length!==4||q.choices.some(c=>!object(c)||!slug(c.id)||!text(c.text,2000))||new Set(q.choices.map(c=>c.id)).size!==4||new Set(q.choices.map(c=>c.text?.trim())).size!==4||!q.choices.some(c=>c.id===q.answer)){fail(`${label} 小测 ${q.id} 必须有 4 个不同选项和有效 answer 选项 ID。`);continue;}
+      const pending=q.status==='needs-review'||(q.sourceSignature!==undefined&&q.sourceSignature!==stamp);
+      if(!Array.isArray(q.evidence)||!q.evidence.length||q.evidence.length>10||q.evidence.some(e=>!object(e)||!Number.isInteger(e.paragraph)||e.paragraph<1||!text(e.quote,10000)||(!pending&&!plain[e.paragraph-1]?.includes(e.quote)))){fail(`${label} 小测 ${q.id} 需有真实段落与原文引文 evidence。`);continue;}
+      if(q.status!==undefined&&!['ready','needs-review'].includes(q.status))fail(`${label} 小测状态无效。`);
+      out.push({id:q.id,prompt:q.prompt,choices:q.choices.map(c=>({id:c.id,text:c.text})),answer:q.answer,explanation:q.explanation,evidence:q.evidence.map(e=>({paragraph:e.paragraph,quote:e.quote})),sourceSignature:q.sourceSignature||stamp,status:pending?'needs-review':'ready'});
+    }
+    return out;
+  }
   function validate(input) {
     const errors = [], warnings = [];
     const fail = message => { if (errors.length < 40) errors.push(message); };
@@ -26,6 +41,7 @@
     if (typeof input.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0,10) !== input.date) fail('date 必须是有效的 YYYY-MM-DD 日期。');
     if (!Array.isArray(input.words) || input.words.length < 1 || input.words.length > 5000) fail('words 需包含 1–5000 个目标词。');
     if (!Array.isArray(input.articles) || input.articles.length < 1 || input.articles.length > 100) fail('articles 需包含 1–100 篇文章。');
+    if(input.id==='original-baseline' && (input.articles.length!==25 || input.articles.some((a,i)=>a?.id!==`article-${String(i+1).padStart(2,'0')}`))) fail('原始资料修订必须保留 25 篇及原文章 ID。');
     if (errors.length) return {ok:false,errors,warnings};
     if (input.sourceCount !== input.words.length) fail(`sourceCount 必须等于去重后的目标词数量（当前为 ${input.words.length}）。`);
     const words = Object.create(null), articles = [], ids = new Set();
@@ -90,7 +106,8 @@
         paragraphWords.push(keys);
         return result + escape(p.slice(cursor));
       });
-      articles.push({id:ai+1,key:`${input.id}/${a.id}`,batch:input.id,batchTitle:input.title,title:a.title,zhTitle:a.zhTitle,paragraphs,plain,translations,sentenceTranslations,words:[...seen],paragraphWords,wordCount:plain.join(' ').match(/\b[a-zA-Z]+(?:['’-][a-zA-Z]+)*\b/g)?.length || 0});
+      const quiz=questions(a,plain,fail,label);
+      articles.push({id:ai+1,key:`${input.id}/${a.id}`,batch:input.id,batchTitle:input.title,title:a.title,zhTitle:a.zhTitle,paragraphs,plain,translations,sentenceTranslations,questions:quiz,sourceSignature:signature(a),quizSignature:signature({paragraphs:quiz.map(q=>({en:JSON.stringify(q)})),uses:[]}),words:[...seen],paragraphWords,wordCount:plain.join(' ').match(/\b[a-zA-Z]+(?:['’-][a-zA-Z]+)*\b/g)?.length || 0});
     });
     const unused = [];
     Object.values(words).forEach(w=>{
@@ -109,7 +126,7 @@
     try { return validate(JSON.parse(source.replace(/^\uFEFF/,''))); }
     catch { return {ok:false,errors:['JSON 格式错误。请使用 AI 导出的 .json 文件；不要包含代码围栏、注释或省略号。'],warnings:[]}; }
   }
-  const api = {validate,parse,matches,escape};
+  const api = {validate,parse,matches,escape,signature};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.StudyPack = api;
 })(typeof window !== 'undefined' ? window : globalThis);

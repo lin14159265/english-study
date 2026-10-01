@@ -80,7 +80,8 @@ test('batch scoping keeps a repeated lemma and its different meanings independen
 test('legacy material remains intact when browser storage is unavailable',async()=>{
   const base={window:{}}; vm.runInNewContext(fs.readFileSync(__dirname+'/../content.js','utf8'),base);
   const before=JSON.stringify(base.window.READING_DATA);
-  const ctx={window:{StudyPack:core},document:{getElementById:()=>null},setTimeout,clearTimeout,indexedDB:{open(){throw new Error('disabled');}}};
+  const workspace=require('../workspace-core');
+  const ctx={window:{StudyPack:core,StudyWorkspaceCore:workspace},StudyPack:core,StudyWorkspaceCore:workspace,document:{getElementById:()=>null},setTimeout,clearTimeout,indexedDB:{open(){throw new Error('disabled');}}};
   vm.runInNewContext(fs.readFileSync(__dirname+'/../imports.js','utf8'),ctx);
   const data=await ctx.window.StudyLibrary.open(base.window.READING_DATA);
   assert.equal(data.articles.length,25); assert.equal(Object.keys(data.words).length,1000);
