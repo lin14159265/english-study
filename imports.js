@@ -7,6 +7,7 @@ window.StudyLibrary = (() => {
   const local = new Map(), published = new Map();
   let status = '正在检查已发布资料…', storageStatus = '';
   function openDB() {
+    if(window.StudyState)return Promise.resolve(window.StudyState.database());
     return new Promise(resolve => {
       let settled = false;
       const finish = value => { if (!settled) { settled = true; resolve(value); } else value?.close(); };
@@ -173,5 +174,5 @@ window.StudyLibrary = (() => {
     });
     renderManager(); refresh();
   }
-  return {open,attach,entries};
+  return {open,attach,entries,payloads:()=>effective().map(r=>StudyWorkspaceCore.clone(r.payload))};
 })();

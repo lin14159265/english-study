@@ -5,11 +5,11 @@
   const labels = {known:'认识',uncertain:'模糊','wrong-sense':'误用了另一个义项'};
   const KEY = 'english-study.learning.v1';
   function create({data,current,legacy,toast,changed,navigate,openSentence}) {
-    let raw; try {raw=JSON.parse(localStorage.getItem(KEY)||'null');} catch {}
+    const raw=root.StudyState.get('learning',null);
     const state=C.load(raw);
     let selected=null,reviewView='words',hiddenAnswers=false,quizRevealed=false,sentenceList=[],sentenceIndex=0,referenceVisible=false;
     function persist() {
-      try {localStorage.setItem(KEY,JSON.stringify(state));return true;}
+      try {return root.StudyState.set('learning',state);}
       catch {toast('浏览器未能保存学习记录，本次修改仅暂存在页面中');return false;}
     }
     if(C.migrate(state,legacy,data))persist();

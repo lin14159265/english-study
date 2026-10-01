@@ -1,6 +1,7 @@
 /* Static reader: native selectable text; no remote dictionary or account required. */
 (async () => {
   'use strict';
+  await window.StudyState.open();
   const data = await window.StudyLibrary.open(window.READING_DATA);
   const $ = id => document.getElementById(id);
   const escape = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -28,7 +29,7 @@
   const idForKey = key => data.articles.find(a=>a.key===key)?.id;
   const articleHash = a => a.batch==='original' ? `#article-${String(a.id).padStart(2,'0')}` : `#read=${encodeURIComponent(a.key)}`;
   let raw = {};
-  try { raw = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch {}
+  raw = StudyState.get('reader',{});
   const saved = raw.settings || {};
   const state = {
     settings: {
@@ -43,14 +44,14 @@
     positions:raw.positionKeys && typeof raw.positionKeys === 'object' ? Object.fromEntries(Object.entries(raw.positionKeys).map(([k,v])=>[idForKey(k),v]).filter(([id])=>id)) : raw.positions && typeof raw.positions === 'object' ? raw.positions : {}
   };
   let activeTab = 'reading', selectedWord = null, wordTrigger = null, scrollTimer, toastTimer, storageWarned = false, restoring = false;
-  let learning;
+  let learning, workspace;
   const current = () => data.articles[state.current - 1];
   const toast = text => { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 2500); };
   const persist = () => {
     state.currentKey = current().key;
     state.readKeys = state.read.map(id=>data.articles[id-1]?.key).filter(Boolean);
     state.positionKeys = Object.fromEntries(Object.entries(state.positions).filter(([id])=>validId(Number(id))).map(([id,v])=>[data.articles[Number(id)-1].key,v]));
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { if (!storageWarned) { storageWarned = true; toast('浏览器未允许保存，设置仅在本次打开期间生效'); } }
+    try { StudyState.set('reader',state); } catch { if (!storageWarned) { storageWarned = true; toast('浏览器未允许保存，设置仅在本次打开期间生效'); } }
   };
   const recordPosition = () => { if (!restoring && activeTab === 'reading') state.positions[state.current] = Math.max(0,window.scrollY); };
   function applySettings() {
@@ -214,6 +215,8 @@
       learning.articleChanged(snapshot.id);setTab('sentence');$('sentenceOwn').focus();
     }
   });
+  workspace=StudyWorkspace.create({data,current,persist:()=>{recordPosition();persist();},toast});
+  document.addEventListener('study-storage-warning',e=>toast(e.detail));
   paintIcons();
   $('articleSearch').addEventListener('input',renderDirectory);
   $('batchFilter').addEventListener('change',renderDirectory);
