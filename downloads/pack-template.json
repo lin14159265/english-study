@@ -88,6 +88,98 @@
           "occurrence": 1,
           "sense": "减少"
         }
+      ],
+      "questions": [
+        {
+          "id": "measurement",
+          "prompt": "What did the students measure before making changes?",
+          "choices": [
+            {
+              "id": "a",
+              "text": "The size of the reading room."
+            },
+            {
+              "id": "b",
+              "text": "The noise near the door."
+            },
+            {
+              "id": "c",
+              "text": "The cost of a separate room."
+            },
+            {
+              "id": "d",
+              "text": "The number of group discussions."
+            }
+          ],
+          "answer": "b",
+          "explanation": "第一段明确说明，学生在采取改动之前测量了门口附近的噪声。",
+          "evidence": [
+            {
+              "paragraph": 1,
+              "quote": "Before making any changes, a group of students measured the noise near the door."
+            }
+          ]
+        },
+        {
+          "id": "solution",
+          "prompt": "How did the students reduce noise without stopping people from working together?",
+          "choices": [
+            {
+              "id": "a",
+              "text": "They closed the reading room."
+            },
+            {
+              "id": "b",
+              "text": "They asked students to work alone."
+            },
+            {
+              "id": "c",
+              "text": "They moved group discussions to a separate room."
+            },
+            {
+              "id": "d",
+              "text": "They stopped asking readers questions."
+            }
+          ],
+          "answer": "c",
+          "explanation": "学生把小组讨论移到单独的房间，既减少噪声，也保留了合作学习。",
+          "evidence": [
+            {
+              "paragraph": 2,
+              "quote": "The students suggested a practical solution: move group discussions to a separate room."
+            }
+          ]
+        },
+        {
+          "id": "practical",
+          "prompt": "What does “practical” in paragraph 2 most nearly mean?",
+          "choices": [
+            {
+              "id": "a",
+              "text": "Useful."
+            },
+            {
+              "id": "b",
+              "text": "Expensive."
+            },
+            {
+              "id": "c",
+              "text": "Noisy."
+            },
+            {
+              "id": "d",
+              "text": "Difficult."
+            }
+          ],
+          "answer": "a",
+          "explanation": "这里的 practical 指能切实解决问题的、实用的，与词表规定的义项一致。",
+          "evidence": [
+            {
+              "paragraph": 2,
+              "quote": "This small change reduced noise in the reading room without stopping people from working together."
+            }
+          ]
+        }
       ]
     }
   ]

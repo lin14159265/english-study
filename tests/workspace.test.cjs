@@ -33,3 +33,14 @@ test('hostile prototype keys and duplicate sources are rejected',()=>{
   const b=backup();b.state.extra.editorDrafts=JSON.parse('{"__proto__":{"x":1}}');assert.equal(C.validateBackup(b).ok,false);
   b.state.extra.editorDrafts={};b.packs.push(C.clone(example));assert.equal(C.validateBackup(b).ok,false);
 });
+test('independent backup copies preserve both conflicting packages and remap learning references',()=>{
+ const a=backup(),b=backup();b.packs[0].title='另一份来源';const d=P.validate(b.packs[0]).compiled,w=Object.entries(d.words)[0],card=L.usage({articles:d.articles,words:d.words},w[0],w[1].uses[0]);b.state.learning.cards.push(card);b.state.extra.queue.push({id:'copy-task',articleKey:card.articleKey,mode:'reading',status:'pending'});
+ const r=C.restorePlan(a,b,'merge','copy');assert.equal(r.backup.packs.length,2);const copied=r.backup.packs.find(p=>p.id!==example.id);assert.ok(copied.id.includes('copy'));assert.ok(r.backup.state.learning.cards[0].articleKey.startsWith(copied.id+'/'));assert.ok(r.backup.state.learning.cards[0].wordKey.startsWith(copied.id+'::'));assert.equal(C.validateBackup(r.backup).ok,true);
+ const again=C.restorePlan(r.backup,b,'merge','copy');assert.equal(again.backup.packs.length,2);
+});
+test('independent original revisions keep old cards with the copied original source',()=>{
+ const a=backup(),b=backup();b.state.extra.edits.original={payload:C.clone(base),baseHash:C.hash(base)};b.state.extra.edits.original.payload.articles[0].paragraphs[0].zh+='（旧设备修订）';
+ const mapped=C.remapOriginal(P.validate(b.state.extra.edits.original.payload).compiled),card=L.usage(mapped,'value',mapped.words.value.uses[0]);b.state.learning.cards.push(card);
+ const r=C.restorePlan(a,b,'merge','copy'),copied=r.backup.packs.find(p=>p.id.startsWith('original-copy-'));
+ assert.ok(copied);assert.ok(r.backup.state.learning.cards[0].wordKey.startsWith(copied.id+'::'));assert.equal(r.backup.state.learning.cards[0].articleKey,copied.id+'/article-01');assert.equal(C.validateBackup(r.backup).ok,true);
+});

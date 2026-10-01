@@ -36,7 +36,7 @@ window.StudyLibrary = (() => {
   function rawEffective() {
     return [...new Map([...published,...local]).values()].sort((a,b)=>a.payload.date.localeCompare(b.payload.date) || a.payload.id.localeCompare(b.payload.id));
   }
-  const extra = () => window.StudyState?.get('extra',StudyWorkspaceCore.emptyExtra()) || StudyWorkspaceCore.emptyExtra();
+  const extra = () => StudyWorkspaceCore.clone(window.StudyState?.get('extra',StudyWorkspaceCore.emptyExtra()) || StudyWorkspaceCore.emptyExtra());
   function effective() {
     const records = new Map(rawEffective().map(r=>[r.payload.id,r]));
     for(const [id,e] of Object.entries(extra().edits)) {
@@ -75,12 +75,12 @@ window.StudyLibrary = (() => {
     const x=extra(), old=x.edits[id], raw=id==='original'?originalSource():rawEffective().find(r=>r.payload.id===id)?.payload;
     x.editUndo={sourceId:id,edit:old||null};
     x.edits[id]={payload:StudyWorkspaceCore.clone(payload),baseHash:old?.baseHash || (raw?StudyWorkspaceCore.hash(raw):null),at:new Date().toISOString()};
-    window.StudyState.set('extra',x);await window.StudyState.flush();changed();
+    const prior=StudyWorkspaceCore.clone(window.StudyState.get('extra',StudyWorkspaceCore.emptyExtra()));window.StudyState.set('extra',x);try{await window.StudyState.flush();}catch(e){window.StudyState.set('extra',prior);throw e;}changed();
   }
   async function resetRevision(id,undo=false) {
     const x=extra();if(undo){if(x.editUndo?.sourceId!==id)throw new Error('没有可撤销的修订');const previous=x.editUndo.edit;delete x.editUndo;if(previous)x.edits[id]=previous;else delete x.edits[id];}
     else {x.editUndo={sourceId:id,edit:x.edits[id]||null};delete x.edits[id];}
-    window.StudyState.set('extra',x);await window.StudyState.flush();changed();
+    const prior=StudyWorkspaceCore.clone(window.StudyState.get('extra',StudyWorkspaceCore.emptyExtra()));window.StudyState.set('extra',x);try{await window.StudyState.flush();}catch(e){window.StudyState.set('extra',prior);throw e;}changed();
   }
   async function open(base) {
     original = base; data = {...base}; db = await openDB();

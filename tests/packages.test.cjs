@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const core = require('../package-core.js');
 const example = JSON.parse(fs.readFileSync(__dirname+'/../downloads/pack-template.json','utf8'));
-const copy = () => { const p=structuredClone(example);p.articles.forEach(a=>a.paragraphs.forEach(p=>delete p.sentences));return p; };
+const copy = () => { const p=structuredClone(example);p.articles.forEach(a=>{delete a.questions;a.paragraphs.forEach(p=>delete p.sentences);});return p; };
 function invalid(mutate, pattern) {
   const pack = copy(); mutate(pack);
   const result = core.validate(pack);

@@ -24,6 +24,7 @@
     for(const q of a.questions){
       if(!object(q)||!slug(q.id)||ids.has(q.id)||!text(q.prompt,2000)||!text(q.explanation,5000)){fail(`${label} 小测题目需要唯一 id、题干 prompt 和解析 explanation。`);continue;}ids.add(q.id);
       if(!Array.isArray(q.choices)||q.choices.length!==4||q.choices.some(c=>!object(c)||!slug(c.id)||!text(c.text,2000))||new Set(q.choices.map(c=>c.id)).size!==4||new Set(q.choices.map(c=>c.text?.trim())).size!==4||!q.choices.some(c=>c.id===q.answer)){fail(`${label} 小测 ${q.id} 必须有 4 个不同选项和有效 answer 选项 ID。`);continue;}
+      if(q.sourceSignature!==undefined&&(typeof q.sourceSignature!=='string'||q.sourceSignature.length>160))fail(`${label} 小测来源版本无效。`);
       const pending=q.status==='needs-review'||(q.sourceSignature!==undefined&&q.sourceSignature!==stamp);
       if(!Array.isArray(q.evidence)||!q.evidence.length||q.evidence.length>10||q.evidence.some(e=>!object(e)||!Number.isInteger(e.paragraph)||e.paragraph<1||!text(e.quote,10000)||(!pending&&!plain[e.paragraph-1]?.includes(e.quote)))){fail(`${label} 小测 ${q.id} 需有真实段落与原文引文 evidence。`);continue;}
       if(q.status!==undefined&&!['ready','needs-review'].includes(q.status))fail(`${label} 小测状态无效。`);
@@ -44,6 +45,7 @@
     if(input.id==='original-baseline' && (input.articles.length!==25 || input.articles.some((a,i)=>a?.id!==`article-${String(i+1).padStart(2,'0')}`))) fail('原始资料修订必须保留 25 篇及原文章 ID。');
     if (errors.length) return {ok:false,errors,warnings};
     if (input.sourceCount !== input.words.length) fail(`sourceCount 必须等于去重后的目标词数量（当前为 ${input.words.length}）。`);
+    if(input.sourceCorrections!==undefined && (!Array.isArray(input.sourceCorrections)||input.sourceCorrections.some(c=>!object(c)||!text(c.word,80)||!text(c.before,2000)||!text(c.after,2000)||!text(c.reason,2000))))fail('词表来源修正需保留单词、修正前后义项及原因。');
     const words = Object.create(null), articles = [], ids = new Set();
     input.words.forEach((w,i) => {
       const label = `words[${i}]`;

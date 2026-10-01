@@ -26,7 +26,9 @@ test('migration occurs once and does not re-add a deliberately removed old favor
 });
 test('source reorder uses stable article keys and deletion or rewrite retains snapshot without wrong jump',()=>{
   const card=originalCard(1);
-  const changed={words:data.words,articles:[...data.articles].reverse().map((a,i)=>({...a,id:i+1}))};
+  const reordered=[...data.articles].reverse().map((a,i)=>({...a,id:i+1}));
+  const remap=new Map(data.articles.map(a=>[a.id,reordered.find(b=>b.key===a.key).id]));
+  const changed={words:Object.fromEntries(Object.entries(data.words).map(([k,w])=>[k,{...w,uses:w.uses.map(u=>({...u,article:remap.get(u.article)}))}])),articles:reordered};
   assert.equal(C.locate(changed,card).article,12);
   const removed={...changed,articles:changed.articles.filter(a=>a.key!==card.articleKey)};
   assert.equal(C.locate(removed,card),null);
@@ -84,3 +86,5 @@ test('recently removed records remain available after reload for undo',()=>{
   const s=C.empty(),card=originalCard(0);s.trash.push({kind:'word',record:card});
   assert.equal(C.load(JSON.parse(JSON.stringify(s))).trash[0].record.sense,'价值');
 });
+
+test('a corrected sense cannot silently reattach a saved old sense to the same sentence',()=>{const card=originalCard(0),changed={...data,words:{...data.words,value:{...data.words.value,uses:data.words.value.uses.map(u=>({...u,sense:'来源已修正'}))}}};assert.equal(C.locate(changed,card),null);assert.equal(card.sense,'价值');});

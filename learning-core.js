@@ -60,6 +60,7 @@
   function locate(data, snapshot) {
     const a = data.articles.find(a=>a.key===snapshot.articleKey);
     if (!a || !a.plain[snapshot.paragraph]?.includes(snapshot.context || snapshot.en)) return null;
+    if(snapshot.wordKey && !data.words[snapshot.wordKey]?.uses.some(u=>u.article===a.id && u.paragraph===snapshot.paragraph && u.sense===snapshot.sense && contextFor(a,u)===snapshot.context))return null;
     return {article:a.id,paragraph:snapshot.paragraph};
   }
   function empty() { return {version:1,cards:[],attempts:{},drafts:{},notes:[],cursor:{},migrated:[],trash:[],guessMode:false}; }
