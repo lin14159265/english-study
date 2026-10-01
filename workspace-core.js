@@ -62,9 +62,11 @@
     const ids=new Set();for(const p of b.packs){const r=P.validate(p);if(!r.ok)errors.push(`资料 ${p?.id||''}：${r.errors[0]}`);if(ids.has(p?.id))errors.push('备份资料 ID 重复。');ids.add(p?.id);}
     if(!P.validate(b.base).ok||b.base.id!=='original-baseline')errors.push('原始资料快照无效。');
     errors.push(...validateState(b.state));
-    const keys=new Set([...Array.from({length:25},(_,i)=>`original/${i+1}`),...b.packs.flatMap(p=>(p.articles||[]).map(a=>`${p.id}/${a.id}`))]);
-    const missing=[...(b.state?.learning?.cards||[]),...(b.state?.learning?.notes||[]),...(b.state?.extra?.queue||[])].filter(r=>!keys.has(r.articleKey));
-    return {ok:!errors.length,errors,summary:{missing:missing.length,packs:b.packs.length,cards:b.state?.learning?.cards?.length||0,notes:b.state?.learning?.notes?.length||0,tasks:b.state?.extra?.queue?.length||0,attempts:b.state?.extra?.quizAttempts?.length||0,pending:b.state?.extra?.pendingSentences?.filter(s=>s.status==='pending').length||0,rounds:b.state?.extra?.reviewRounds?.length||0,lookup:b.state?.extra?.lookupWords?.length||0}};
+    const array=v=>Array.isArray(v)?v:[],x=b.state?.extra||{},learning=b.state?.learning||{};
+    const keys=new Set([...Array.from({length:25},(_,i)=>`original/${i+1}`),...b.packs.flatMap(p=>array(p?.articles).map(a=>`${p.id}/${a?.id}`))]);
+    const roundItems=[...array(x.reviewRounds),...(x.reviewSession?[x.reviewSession]:[])].flatMap(r=>array(r?.items).map(i=>i?.snapshot));
+    const missing=[...array(learning.cards),...array(learning.notes),...array(x.queue),...array(x.pendingSentences),...array(x.lookupWords),...array(x.wrongQuestions),...roundItems].filter(r=>r&&!keys.has(r.articleKey));
+    return {ok:!errors.length,errors,summary:{missing:missing.length,packs:b.packs.length,cards:array(learning.cards).length,notes:array(learning.notes).length,tasks:array(x.queue).length,attempts:array(x.quizAttempts).length,pending:array(x.pendingSentences).filter(s=>s?.status==='pending').length,rounds:array(x.reviewRounds).length,lookup:array(x.lookupWords).length}};
   }
   function parseBackup(s){try{if(s.length>100*1024*1024)return {ok:false,errors:['备份超过 100 MB，请使用分卷备份。']};const b=JSON.parse(s.replace(/^\uFEFF/,''));return {...validateBackup(b),backup:b};}catch{return {ok:false,errors:['备份 JSON 格式错误，未修改任何记录。']};}}
   function mergeList(a,b,prefer,conflicts,label,key='id'){
