@@ -349,7 +349,7 @@
     state.resumeKey=next.resumeKey||next.currentKey||visibleKey;
     projectRecords();applySettings();learning.reloadState();
     StudyLibrary.reload(e.detail?.packs).catch(e=>toast(e.message));
-    renderDirectory();renderVocabulary();renderTabs();updateNavigation();workspace.changed();experience.changed();
+    renderDirectory();renderVocabulary();renderTabs();updateNavigation();workspace.reloadState();experience.reloadState();
   });
   StudyLibrary.attach({toast,closeAux:()=>{closeWord();closeDirectory();},beforeChange:()=>{recordPosition();persist();},onChange:({external=false}={})=>{
     const wasMissing=renderedKey!==state.currentKey;
