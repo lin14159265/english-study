@@ -146,7 +146,7 @@
     });
     function libraryChanged() {if(C.migrate(state,legacy,data))persist();articleChanged();renderReview();}
     return {entry,saved,toggle,prepare,renderReview,articleChanged,libraryChanged,
-      reloadState:()=>{state=C.load(root.StudyState.get('learning',null));renderReview();articleChanged();},setReviewView:v=>{reviewView=['words','sentences','questions'].includes(v)?v:'words';renderReview();},selected:()=>selected,count:()=>state.cards.length+state.notes.length+questionCount()};
+      reloadState:()=>{legacy=root.StudyState.get('reader',{}).review||[];state=C.load(root.StudyState.get('learning',null));selected=null;$('guessMode').checked=state.guessMode;renderReview();articleChanged();},setReviewView:v=>{reviewView=['words','sentences','questions'].includes(v)?v:'words';renderReview();},selected:()=>selected,count:()=>state.cards.length+state.notes.length+questionCount()};
   }
   root.StudyLearning={create};
 })(window);

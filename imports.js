@@ -5,7 +5,7 @@ window.StudyLibrary = (() => {
   const DB = 'english-study.packages.v1';
   let db = null, original, data, hooks, draft = null, busy = false, removePending = null;
   const local = new Map(), published = new Map();
-  let status = '正在检查已发布资料…', storageStatus = '';
+  let status = '正在检查已发布资料…', storageStatus = '', librarySignature = '';
   function openDB() {
     if(window.StudyState)return Promise.resolve(window.StudyState.database());
     return new Promise(resolve => {
@@ -47,6 +47,7 @@ window.StudyLibrary = (() => {
     return [...records.values()];
   }
   function originalSource() {return rawEffective().find(r=>r.payload.id==='original-baseline')?.payload || StudyWorkspaceCore.originalPack(original);}
+  const signature = records => JSON.stringify([records.map(r=>[r.key,r.source,r.path,r.updated,r.payload]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),extra().edits]);
   function rebuild() {
     const source=originalSource(), edit=extra().edits.original, result=StudyPack.validate(edit?.payload || source);
     const mapped=StudyWorkspaceCore.remapOriginal(result.compiled);
@@ -60,6 +61,7 @@ window.StudyLibrary = (() => {
       Object.entries(pack.words).forEach(([k,w])=>{ words[k] = {...w,uses:w.uses.map(u=>({...u,article:u.article+offset}))}; });
     });
     data.articles = articles; data.words = words;
+    librarySignature=signature([...published.values(),...local.values()]);
   }
   function model(key) {
     const id=key.startsWith('original/')?'original':key.split('/')[0];
@@ -95,6 +97,17 @@ window.StudyLibrary = (() => {
       } catch { storageStatus = '本机缓存读取失败，仍可阅读原始资料。'; }
     } else storageStatus = '浏览器未允许本机保存。导入只能用于本次打开，请保留 JSON 文件。';
     rebuild(); return data;
+  }
+  // External workspace commits may add/remove local packs or replace revisions.
+  // Do not run beforeChange: that would write this page's old snapshot back.
+  async function reload(snapshot) {
+    if(!db)return;
+    const records=snapshot || await transaction('readonly',store=>store.getAll());
+    if(signature(records)===librarySignature)return false;
+    const nextLocal=new Map(),nextPublished=new Map();
+    records.forEach(record=>{const result=StudyPack.validate(record.payload);if(result.ok)(record.source==='local'?nextLocal:nextPublished).set(record.payload.id,{...record,compiled:result.compiled});});
+    local.clear();published.clear();nextLocal.forEach((v,k)=>local.set(k,v));nextPublished.forEach((v,k)=>published.set(k,v));
+    rebuild();hooks?.onChange({external:true});renderManager();return true;
   }
   const entries = () => effective().filter(r=>r.payload.id!=='original-baseline').map(r=>({id:r.payload.id,title:r.payload.title,date:r.payload.date,source:r.source,articles:r.compiled.articles.length,words:r.payload.words.length,used:r.payload.words.length-r.compiled.unused.length,override:r.source==='local'&&published.has(r.payload.id)}));
   function renderManager() {
@@ -188,5 +201,5 @@ window.StudyLibrary = (() => {
     });
     renderManager(); refresh();
   }
-  return {open,attach,entries,model,saveRevision,resetRevision,payloads:()=>rawEffective().map(r=>StudyWorkspaceCore.clone(r.payload))};
+  return {open,reload,attach,entries,model,saveRevision,resetRevision,payloads:()=>rawEffective().map(r=>StudyWorkspaceCore.clone(r.payload))};
 })();

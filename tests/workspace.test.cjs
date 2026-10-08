@@ -11,6 +11,13 @@ test('complete backups parse without losing source material, positions or draft 
   const b=backup();b.state.learning.drafts.x={own:'我自己的理解',reason:'否定理解错',categories:['否定']};
   const r=C.parseBackup(JSON.stringify(b));assert.equal(r.ok,true);assert.equal(r.backup.state.reader.positionKeys['original/1'],200);assert.equal(r.backup.state.learning.drafts.x.own,'我自己的理解');
 });
+test('version 1 backup merge retains missing source progress and the selected optional resume key',()=>{
+  const a=backup(),b=backup();b.state.reader.currentKey='missing/story';b.state.reader.resumeKey='other-missing/story';b.state.reader.readKeys.push('missing/story');b.state.reader.positionKeys['missing/story']=900;
+  const merged=C.restorePlan(a,b,'merge','backup').backup;assert.equal(merged.version,1);assert.equal(merged.state.reader.resumeKey,'other-missing/story');assert.equal(merged.state.reader.positionKeys['missing/story'],900);assert.ok(C.parseBackup(JSON.stringify(merged)).ok);assert.ok(C.validateBackup(a).ok);
+});
+test('optional resume keys follow article source remapping in independent backup copies',()=>{
+  const a=backup(),b=backup();b.base.articles[0].zhTitle='另一个原始版本';b.state.reader.resumeKey='original/1';const copied=C.independentCopies(a,b);assert.match(copied.state.reader.resumeKey,/^original-copy-[^/]+\/article-01$/);assert.ok(C.validateBackup(copied).ok);
+});
 test('corrupt, unsupported and invalid learning backups are rejected before restoring',()=>{
   assert.equal(C.parseBackup('{no').ok,false);const b=backup();b.version=2;assert.equal(C.validateBackup(b).ok,false);
   b.version=1;b.state.learning.cards=[{id:'broken'}];assert.equal(C.validateBackup(b).ok,false);

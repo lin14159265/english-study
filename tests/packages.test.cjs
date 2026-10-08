@@ -100,3 +100,32 @@ test('optional sentence pairs preserve exact source and reject omitted or rewrit
   assert.equal(core.validate(copy()).ok,true);
   assert.equal(core.validate(copy()).compiled.articles[0].sentenceTranslations[0],null);
 });
+async function cachedLibrary(options={}){
+  const base={window:{}};vm.runInNewContext(fs.readFileSync(__dirname+'/../content.js','utf8'),base);
+  const C=require('../workspace-core'),records=new Map(),events=[],nodes=new Map(),fault={read:false},x=C.emptyExtra();
+  const db={transaction(_names,mode){const tx={objectStore:()=>({put:r=>records.set(r.key,structuredClone(r)),delete:key=>records.delete(key),getAll(){const q={};setTimeout(()=>{if(fault.read){fault.read=false;tx.error=Error('cache read failure');tx.onabort?.();return;}q.result=structuredClone([...records.values()]);q.onsuccess?.();tx.oncomplete?.();},0);return q;}})};if(mode==='readwrite')setTimeout(()=>tx.oncomplete?.(),0);return tx;}};
+  const node=()=>({value:'',hidden:false,disabled:false,textContent:'',innerHTML:'',addEventListener(){}});
+  const ctx={window:{StudyPack:core,StudyWorkspaceCore:C,StudyState:{database:()=>db,get:()=>x}},StudyPack:core,StudyWorkspaceCore:C,document:{getElementById:id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id);}},fetch:options.fetch|| (async()=>{throw Error('offline');}),URL,location:{href:'https://example.test/english-study/'},AbortSignal,setTimeout,clearTimeout};
+  vm.runInNewContext(fs.readFileSync(__dirname+'/../imports.js','utf8'),ctx);
+  const library=ctx.window.StudyLibrary,data=await library.open(base.window.READING_DATA);
+  library.attach({beforeChange:()=>events.push('before'),onChange:e=>{events.push(e);options.onChange?.(e);},toast(){},closeAux(){}});
+  return {library,data,records,events,fault,x};
+}
+test('external pack refresh replaces cached maps, preserves stable article identity and does not call old-state persistence',async()=>{
+  const {library,data,records,events}=await cachedLibrary(),p=copy();records.set('local:'+p.id,{key:'local:'+p.id,source:'local',payload:p});
+  await library.reload();assert.ok(data.articles.some(a=>a.key===p.id+'/'+p.articles[0].id));assert.equal(library.entries().length,1);assert.deepEqual(JSON.parse(JSON.stringify(events)),[{external:true}]);
+  records.clear();await library.reload();assert.equal(library.entries().length,0);assert.equal(data.articles.length,25);assert.equal(events.includes('before'),false);
+});
+test('failed external pack read retains the previous valid library and succeeds on retry',async()=>{
+  const {library,data,records,fault}=await cachedLibrary(),p=copy();records.set('local:'+p.id,{key:'local:'+p.id,source:'local',payload:p});await library.reload();
+  records.clear();fault.read=true;await assert.rejects(library.reload(),/read failure/);assert.equal(library.entries().length,1);assert.ok(data.articles.some(a=>a.key===p.id+'/'+p.articles[0].id));await library.reload();assert.equal(library.entries().length,0);
+});
+test('unchanged atomic package snapshots do not rebuild the reader on every foreign position save',async()=>{
+ const {library,records,events}=await cachedLibrary(),p=copy();records.set('local:'+p.id,{key:'local:'+p.id,source:'local',payload:p});assert.equal(await library.reload([...records.values()]),true);const before=events.length;assert.equal(await library.reload(structuredClone([...records.values()])),false);assert.equal(events.length,before);
+});
+test('published catalog loading is asynchronous and rebuilds only after the delayed source becomes available',async()=>{
+  let releaseCatalog,finish;const catalog=new Promise(resolve=>releaseCatalog=resolve),loaded=new Promise(resolve=>finish=resolve),p=copy();
+  const r=await cachedLibrary({fetch:url=>String(url).includes('index.json')?catalog:Promise.resolve({ok:true,text:async()=>JSON.stringify(p)}),onChange:finish});assert.equal(r.data.articles.length,25);assert.equal(r.events.length,0);
+  releaseCatalog({ok:true,text:async()=>JSON.stringify({files:[{path:'packages/delayed.json',updated:'test-v1'}]})});await loaded;
+  assert.ok(r.data.articles.some(a=>a.key===p.id+'/'+p.articles[0].id));assert.ok(r.records.has('published:'+p.id));assert.deepEqual(r.events,['before',undefined]);
+});
