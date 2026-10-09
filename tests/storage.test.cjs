@@ -2,17 +2,17 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const C=require('../workspace-core'),L=require('../learning-core');
 const content={window:{}};vm.runInNewContext(fs.readFileSync(__dirname+'/../content.js','utf8'),content);const base=C.originalPack(content.window.READING_DATA),pack=JSON.parse(fs.readFileSync(__dirname+'/../downloads/pack-template.json','utf8'));
 function fakeDatabase(){
- const stores=new Map([['packs',new Map()]]),state={fail:false,failRead:false,openedVersions:[]};
+ const stores=new Map([['packs',new Map()]]),state={fail:false,failRead:false,openedVersions:[],packReads:0};
  const db={close(){},objectStoreNames:{contains:k=>stores.has(k)},createObjectStore:k=>stores.set(k,new Map()),transaction(names,mode){
-  const active=new Map(names.map(n=>[n,new Map([...stores.get(n)].map(([k,v])=>[k,structuredClone(v)]))])),requests=[],tx={error:null,aborted:false,abort(){this.aborted=true;this.error=new Error('transaction aborted');},objectStore(n){const map=active.get(n);return {get(k){const q={};requests.push(()=>{q.result=structuredClone(map.get(k));q.onsuccess?.();});return q;},getAll(){const q={};requests.push(()=>{q.result=structuredClone([...map.values()]);q.onsuccess?.();});return q;},put(v){map.set(v.key,structuredClone(v));return {};},delete:k=>map.delete(k),clear:()=>map.clear()};}};
-  setTimeout(()=>{if(mode==='readonly'&&state.failRead){state.failRead=false;tx.error=new Error('simulated read failure');tx.onabort?.();return;}if(mode==='readwrite'&&state.fail){state.fail=false;tx.error=new Error('simulated quota failure');tx.onabort?.();return;}requests.forEach(fn=>fn());if(tx.aborted){tx.onabort?.();return;}if(mode==='readwrite')for(const[n,m]of active)stores.set(n,m);tx.oncomplete?.();},0);return tx;
+  const active=new Map(names.map(n=>[n,new Map([...stores.get(n)].map(([k,v])=>[k,structuredClone(v)]))])),requests=[],tx={error:null,aborted:false,abort(){this.aborted=true;this.error=new Error('transaction aborted');},objectStore(n){const map=active.get(n);return {get(k){const q={};requests.push(()=>{q.result=structuredClone(map.get(k));q.onsuccess?.();});return q;},getAll(){if(n==='packs')state.packReads++;const q={};requests.push(()=>{q.result=structuredClone([...map.values()]);q.onsuccess?.();});return q;},put(v){map.set(v.key,structuredClone(v));return {};},delete:k=>map.delete(k),clear:()=>map.clear()};}};
+  setTimeout(()=>{if(mode==='readonly'&&state.failRead){state.failRead=false;tx.error=new Error('simulated read failure');tx.onabort?.();return;}if(mode==='readwrite'&&state.fail){state.fail=false;tx.error=new Error('simulated quota failure');tx.onabort?.();return;}while(requests.length&&!tx.aborted)requests.shift()();if(tx.aborted){tx.onabort?.();return;}if(mode==='readwrite')for(const[n,m]of active)stores.set(n,m);tx.oncomplete?.();},0);return tx;
  }};
  return {stores,state,indexedDB:{open(name,version){state.openedVersions.push(version);const q={result:db};setTimeout(()=>{q.onupgradeneeded?.();q.onsuccess?.();},0);return q;}}};
 }
 async function setup(options={}){
- const f=options.database||fakeDatabase(),legacy=options.legacy||new Map([['english-study.reader.v1',JSON.stringify({readKeys:['original/1']})]]),events=[],windowEvents={};
- const ctx={window:{StudyWorkspaceCore:C,StudyLearningCore:L,addEventListener:(n,fn)=>windowEvents[n]=fn},indexedDB:options.noDatabase?{open(){throw Error('storage disabled');}}:f.indexedDB,localStorage:{getItem:k=>legacy.get(k),setItem:(k,v)=>legacy.set(k,v)},document:{dispatchEvent:e=>events.push(e)},CustomEvent:class{constructor(type,options){this.type=type;this.detail=options?.detail;}},setTimeout,clearTimeout,...(options.BroadcastChannel?{BroadcastChannel:options.BroadcastChannel}:{}),...(options.Date?{Date:options.Date}:{})};
- vm.runInNewContext(fs.readFileSync(__dirname+'/../workspace-store.js','utf8'),ctx);await ctx.window.StudyState.open();return {...f,S:ctx.window.StudyState,legacy,events,windowEvents};
+ const f=options.database||fakeDatabase(),legacy=options.legacy||new Map([['english-study.reader.v1',JSON.stringify({readKeys:['original/1']})]]),events=[],windowEvents={},listeners={};
+ const ctx={window:{StudyWorkspaceCore:C,StudyLearningCore:L,addEventListener:(n,fn)=>windowEvents[n]=fn},indexedDB:options.noDatabase?{open(){throw Error('storage disabled');}}:f.indexedDB,localStorage:{getItem:k=>legacy.get(k),setItem:(k,v)=>legacy.set(k,v)},document:{addEventListener:(n,fn)=>(listeners[n]??=[]).push(fn),removeEventListener:(n,fn)=>listeners[n]=listeners[n]?.filter(x=>x!==fn),dispatchEvent:e=>{events.push(e);listeners[e.type]?.forEach(fn=>fn(e));}},CustomEvent:class{constructor(type,options){this.type=type;this.detail=options?.detail;}},setTimeout,clearTimeout,...(options.BroadcastChannel?{BroadcastChannel:options.BroadcastChannel}:{}),...(options.Date?{Date:options.Date}:{})};
+ vm.runInNewContext(fs.readFileSync(__dirname+'/../workspace-store.js','utf8'),ctx);await ctx.window.StudyState.open();if(!options.noConsumer)ctx.window.StudyState.onReload(()=>{});return {...f,S:ctx.window.StudyState,legacy,events,windowEvents};
 }
 function broadcastHub(){const pages=[];return {pages,BroadcastChannel:class{constructor(){pages.push(this);}postMessage(data){for(const page of pages)if(page!==this)queueMicrotask(()=>page.onmessage?.({data}));}}};}
 const plain=x=>JSON.parse(JSON.stringify(x));
@@ -64,7 +64,7 @@ test('unavailable IndexedDB never reports new progress as durably saved or overw
  const {S,legacy}=await setup({noDatabase:true});S.set('reader',{currentKey:'missing/story',positionKeys:{'missing/story':999}});await assert.rejects(S.flush(),/暂存/);assert.equal(S.status().phase,'error');assert.deepEqual(JSON.parse(legacy.get('english-study.reader.v1')).readKeys,['original/1']);assert.equal(S.get('reader').positionKeys['missing/story'],999);
 });
 test('external refresh exposes the packages and workspace from one readonly transaction',async()=>{
- const {S,stores,events}=await setup(),saved=stores.get('workspace').get('current');saved.token='with-pack';saved.data.reader={readKeys:[pack.id+'/'+pack.articles[0].id]};stores.get('packs').set('local:a',{key:'local:a',source:'local',payload:pack});
+ const {S,stores,events}=await setup(),saved=stores.get('workspace').get('current');saved.token=saved.libraryToken='with-pack';saved.data.reader={readKeys:[pack.id+'/'+pack.articles[0].id]};stores.get('packs').set('local:a',{key:'local:a',source:'local',payload:pack});
  await S.refresh();const event=events.find(e=>e.type==='study-state-reloaded');assert.deepEqual(event.detail.packs[0].payload,pack);assert.deepEqual(plain(S.get('reader').readKeys),[pack.id+'/'+pack.articles[0].id]);
 });
 test('successful refresh with unchanged head clears a transient read error without writing',async()=>{
@@ -73,4 +73,47 @@ test('successful refresh with unchanged head clears a transient read error witho
 test('package commit tokens stay unique even when the browser clock does not advance',async()=>{
  class FrozenDate extends Date{static now(){return 12345;}}
  const {S,stores}=await setup({Date:FrozenDate});await S.writePacks(p=>p.put({key:'local:a',payload:pack}));const first=stores.get('workspace').get('current').token;await S.writePacks(p=>p.delete('local:a'));assert.notEqual(stores.get('workspace').get('current').token,first);
+});
+test('reading-only foreign commits and unchanged focus never fetch full packages',async()=>{
+ const {S,stores,state,events}=await setup(),saved=stores.get('workspace').get('current'),version=saved.libraryToken;
+ stores.get('packs').set('local:large',{key:'local:large',payload:{text:'x'.repeat(1000000)}});const before=state.packReads;
+ saved.token='reader-only';saved.data.reader.currentKey='original/3';await S.refresh();await S.refresh();
+ assert.equal(state.packReads,before);assert.equal(S.libraryVersion(),version);assert.equal(events.find(e=>e.type==='study-state-reloaded').detail.packs,undefined);
+ S.set('reader',{...S.get('reader'),currentKey:'original/4'});await S.flush();assert.equal(stores.get('workspace').get('current').libraryToken,version);
+});
+test('package and revision updates change the committed library token but unrelated extra fields do not',async()=>{
+ const {S,stores}=await setup(),first=S.libraryVersion();S.set('extra',{...C.emptyExtra(),lastBackupAt:'2026-10-09T00:00:00Z'});await S.flush();assert.equal(S.libraryVersion(),first);
+ const x=plain(S.get('extra'));x.edits[pack.id]={payload:pack};S.set('extra',x);await S.flush();const second=S.libraryVersion();assert.notEqual(second,first);
+ await S.writePacks(p=>p.put({key:'local:a',payload:pack}));assert.notEqual(S.libraryVersion(),second);assert.equal(stores.get('workspace').get('current').libraryToken,S.libraryVersion());
+});
+test('legacy writers without library metadata conservatively read packages in the workspace snapshot',async()=>{
+ const {S,stores,state,events}=await setup(),saved=stores.get('workspace').get('current');saved.token='legacy';delete saved.libraryToken;stores.get('packs').set('local:a',{key:'local:a',source:'local',payload:pack});const before=state.packReads;
+ await S.refresh();assert.equal(state.packReads,before+1);assert.equal(events.find(e=>e.type==='study-state-reloaded').detail.packs[0].payload.id,pack.id);
+ S.set('reader',{currentKey:'original/3'});await S.flush();assert.equal(typeof stores.get('workspace').get('current').libraryToken,'string');
+});
+test('a failed consumer blocks partial UI writes and retries the same head without another package read',async()=>{
+ const {S,stores,state}=await setup();let fail=true,first=0,second=0,shown;
+ S.onReload(()=>{first++;shown=S.get('reader').currentKey;});S.onReload(()=>{second++;if(fail)throw Error('consumer crashed');});
+ const saved=stores.get('workspace').get('current');saved.token=saved.libraryToken='foreign-pack';saved.data.reader.currentKey='original/8';stores.get('packs').set('local:a',{key:'local:a',payload:pack});
+ await assert.rejects(S.refresh(),/consumer crashed/);assert.equal(S.status().phase,'error');assert.equal(shown,'original/8');assert.throws(()=>S.set('reader',{currentKey:'original/1'}),/刷新未完成/);await assert.rejects(S.flush(),/刷新未完成/);
+ const reads=state.packReads;fail=false;await S.retry();assert.equal(S.status().phase,'saved');assert.equal(first,2);assert.equal(second,2);assert.equal(state.packReads,reads);assert.equal(stores.get('workspace').get('current').token,'foreign-pack');
+ S.set('reader',{...S.get('reader'),currentKey:'original/9'});await S.flush();assert.equal(stores.get('workspace').get('current').data.reader.currentKey,'original/9');
+});
+test('repeated consumer failures remain blocked and reopening reads the actual committed snapshot',async()=>{
+ const database=fakeDatabase(),{S,stores}=await setup({database});S.onReload(()=>{throw Error('always fails');});const saved=stores.get('workspace').get('current');saved.token='remote';saved.data.reader.currentKey='original/12';
+ await assert.rejects(S.refresh());await assert.rejects(S.retry());assert.throws(()=>S.set('reader',{currentKey:'original/2'}));
+ const reopened=await setup({database});assert.equal(reopened.S.get('reader').currentKey,'original/12');assert.equal(stores.get('workspace').get('current').data.reader.currentKey,'original/12');
+});
+test('foreign commits received during startup are replayed once a consumer registers',async()=>{
+ const {S,stores,state}=await setup({noConsumer:true}),saved=stores.get('workspace').get('current');saved.token=saved.libraryToken='startup';saved.data.reader.currentKey='late/story';stores.get('packs').set('local:a',{key:'local:a',payload:pack});
+ await S.refresh();assert.throws(()=>S.set('reader',{}),/刷新未完成/);let received;S.onReload(d=>received=d);const reads=state.packReads;await S.refresh();assert.equal(received.packs[0].payload.id,pack.id);assert.equal(state.packReads,reads);assert.equal(S.status().phase,'saved');
+});
+test('retry after a UI failure adopts a newer head and replays its required library snapshot',async()=>{
+ const {S,stores,state}=await setup();let fail=true,seen=[];S.onReload(d=>{seen.push(d.packs?.[0]?.payload.id);if(fail)throw Error('failed');});
+ const saved=stores.get('workspace').get('current');saved.token=saved.libraryToken='packages';stores.get('packs').set('local:a',{key:'local:a',payload:pack});await assert.rejects(S.refresh());const reads=state.packReads;
+ saved.token='newer-reader';saved.data.reader.currentKey='original/10';fail=false;await S.retry();assert.equal(state.packReads,reads);assert.deepEqual(seen,[pack.id,pack.id]);assert.equal(S.get('reader').currentKey,'original/10');
+});
+test('all acknowledged consumers settle before a failed refresh can be retried',async()=>{
+ const {S,stores}=await setup();let started,finish;const began=new Promise(r=>started=r);S.onReload(()=>{throw Error('fast failure');});S.onReload(()=>new Promise(r=>{finish=r;started();}));
+ stores.get('workspace').get('current').token='new-head';let settled=false;const refresh=S.refresh().catch(e=>{settled=true;return e;});await began;await Promise.resolve();assert.equal(settled,false);assert.equal(S.status().phase,'loading');assert.throws(()=>S.set('reader',{}),/刷新未完成/);finish();assert.match((await refresh).message,/fast failure/);assert.equal(S.status().phase,'error');
 });

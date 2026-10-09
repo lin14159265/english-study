@@ -129,3 +129,12 @@ test('published catalog loading is asynchronous and rebuilds only after the dela
   releaseCatalog({ok:true,text:async()=>JSON.stringify({files:[{path:'packages/delayed.json',updated:'test-v1'}]})});await loaded;
   assert.ok(r.data.articles.some(a=>a.key===p.id+'/'+p.articles[0].id));assert.ok(r.records.has('published:'+p.id));assert.deepEqual(r.events,['before',undefined]);
 });
+test('committed library tokens avoid serializing unchanged payloads and revision changes still rebuild',async()=>{
+ const {library,records,data,x}=await cachedLibrary(),p=copy();records.set('local:'+p.id,{key:'local:'+p.id,source:'local',payload:p});const snapshot=[...records.values()];
+ assert.equal(await library.reload(snapshot,{token:'v1'}),true);const poison=new Proxy(snapshot,{get(){throw Error('unchanged payload accessed');}});assert.equal(await library.reload(poison,{token:'v1'}),false);
+ x.edits[p.id]={payload:structuredClone(p)};x.edits[p.id].payload.articles[0].zhTitle='新修订';assert.equal(await library.reload(snapshot,{token:'v2'}),true);assert.equal(data.articles.at(-1).zhTitle,'新修订');
+});
+test('failed external hook can replay a rebuilt library snapshot rather than skipping on a token',async()=>{
+ let fail=true;const {library,records,events}=await cachedLibrary({onChange:e=>{if(e?.external&&fail)throw Error('hook failed');}}),p=copy();records.set('local:'+p.id,{key:'local:'+p.id,source:'local',payload:p});
+ await assert.rejects(library.reload([...records.values()],{token:'v1'}),/hook failed/);fail=false;assert.equal(await library.reload([...records.values()],{token:'v1'}),true);assert.equal(events.length,2);
+});

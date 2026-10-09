@@ -5,7 +5,7 @@ window.StudyLibrary = (() => {
   const DB = 'english-study.packages.v1';
   let db = null, original, data, hooks, draft = null, busy = false, removePending = null;
   const local = new Map(), published = new Map();
-  let status = '正在检查已发布资料…', storageStatus = '', librarySignature = '';
+  let status = '正在检查已发布资料…', storageStatus = '', librarySignature = null, libraryToken = null;
   function openDB() {
     if(window.StudyState)return Promise.resolve(window.StudyState.database());
     return new Promise(resolve => {
@@ -61,7 +61,7 @@ window.StudyLibrary = (() => {
       Object.entries(pack.words).forEach(([k,w])=>{ words[k] = {...w,uses:w.uses.map(u=>({...u,article:u.article+offset}))}; });
     });
     data.articles = articles; data.words = words;
-    librarySignature=signature([...published.values(),...local.values()]);
+    librarySignature=null;libraryToken=null;
   }
   function model(key) {
     const id=key.startsWith('original/')?'original':key.split('/')[0];
@@ -100,14 +100,15 @@ window.StudyLibrary = (() => {
   }
   // External workspace commits may add/remove local packs or replace revisions.
   // Do not run beforeChange: that would write this page's old snapshot back.
-  async function reload(snapshot) {
+  async function reload(snapshot,{token=null}={}) {
     if(!db)return;
+    if(token&&token===libraryToken)return false;
     const records=snapshot || await transaction('readonly',store=>store.getAll());
-    if(signature(records)===librarySignature)return false;
+    if(!token&&signature(records)===(librarySignature??=signature([...published.values(),...local.values()])))return false;
     const nextLocal=new Map(),nextPublished=new Map();
     records.forEach(record=>{const result=StudyPack.validate(record.payload);if(result.ok)(record.source==='local'?nextLocal:nextPublished).set(record.payload.id,{...record,compiled:result.compiled});});
     local.clear();published.clear();nextLocal.forEach((v,k)=>local.set(k,v));nextPublished.forEach((v,k)=>published.set(k,v));
-    rebuild();hooks?.onChange({external:true});renderManager();return true;
+    rebuild();hooks?.onChange({external:true});renderManager();libraryToken=token;return true;
   }
   const entries = () => effective().filter(r=>r.payload.id!=='original-baseline').map(r=>({id:r.payload.id,title:r.payload.title,date:r.payload.date,source:r.source,articles:r.compiled.articles.length,words:r.payload.words.length,used:r.payload.words.length-r.compiled.unused.length,override:r.source==='local'&&published.has(r.payload.id)}));
   function renderManager() {
@@ -117,7 +118,7 @@ window.StudyLibrary = (() => {
     $('refreshPublished').disabled = busy;
     $('packageList').innerHTML = entries().map(r=>`<div class="package-card"><div><h4>${escape(r.title)}</h4><p>${escape(r.date)} · ${r.articles} 篇 · ${r.used}/${r.words} 词覆盖</p><small>${r.source==='local'?(r.override?'本机版本 · 同 ID 已有发布':'本机导入'):'已发布 · 所有设备可读'}</small></div><div class="package-actions"><button class="text-button" data-open-pack="${escape(r.id)}">阅读</button><button class="text-button" data-export-pack="${escape(r.id)}">导出</button>${r.source==='local'?`<button class="text-button" data-remove-pack="${escape(r.id)}">${removePending===r.id?'确认移除':'移除本机版本'}</button>`:''}</div></div>`).join('') || '<p class="manager-empty">还没有新增资料。原始 25 篇文章一直可读。</p>';
   }
-  function changed() { hooks?.beforeChange(); rebuild(); hooks?.onChange(); renderManager(); }
+  function changed() { hooks?.beforeChange(); rebuild(); libraryToken=window.StudyState?.libraryVersion?.()||null; hooks?.onChange(); renderManager(); }
   async function fetchJSON(url) {
     const response = await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(15000)});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -153,13 +154,15 @@ window.StudyLibrary = (() => {
           records.push({key:`published:${payload.id}`,source:'published',payload,compiled:result.compiled,path:file.path,updated:file.updated});
         } catch (e) { issues.push(`${url.pathname.split('/').at(-1)}：${e.message}`); if (cached && !ids.has(cached.payload.id)) { records.push(cached); ids.add(cached.payload.id); } }
       }
-      if (db) {
-        try {
-          await transaction('readwrite',store=>{ published.forEach(r=>store.delete(r.key)); records.forEach(({compiled,...r})=>store.put(r)); });
-        } catch { storageStatus = '已发布资料可读，但浏览器未能保存离线缓存。'; }
-      }
       const before = JSON.stringify([...published.values()].map(r=>[r.payload.id,r.path,r.updated]));
       const after = JSON.stringify(records.map(r=>[r.payload.id,r.path,r.updated]));
+      if (db && before!==after) {
+        try {
+          const write=store=>{published.forEach(r=>store.delete(r.key));records.forEach(({compiled,...r})=>store.put(r));};
+          if(window.StudyState?.writePacks)await StudyState.writePacks(write);
+          else await transaction('readwrite',write);
+        } catch { storageStatus = '已发布资料可读，但浏览器未能保存离线缓存。'; }
+      }
       published.clear(); records.forEach(r=>published.set(r.payload.id,r));
       status = issues.length ? `有 ${issues.length} 份资料未更新，保留上次有效版本（如有）。${issues.slice(0,3).join('；')}` : `已检查发布目录 · ${published.size} 份新增资料`;
       if (before!==after) changed();

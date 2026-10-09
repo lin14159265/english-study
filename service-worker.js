@@ -1,5 +1,5 @@
 /* Cache public application files only; personal data stays in IndexedDB. */
-const VERSION='20261009-retention-1a-v2',CACHE='english-study-shell-'+VERSION,ROOT=new URL('./',self.location.href);
+const VERSION='20261009-retention-1a-v3',CACHE='english-study-shell-'+VERSION,ROOT=new URL('./',self.location.href);
 const FILES=['./','index.html','reader.css?v='+VERSION,'experience.css?v='+VERSION,'content.js?v=20260930-1','package-core.js?v='+VERSION,'import-core.js?v='+VERSION,'imports.js?v='+VERSION,'learning-core.js?v='+VERSION,'learning.js?v='+VERSION,'practice-content.js?v='+VERSION,'tools-core.js?v='+VERSION,'experience-core.js?v='+VERSION,'workspace-core.js?v='+VERSION,'workspace-store.js?v='+VERSION,'workspace-ui.js?v='+VERSION,'experience-ui.js?v='+VERSION,'offline.js?v='+VERSION,'reader.js?v='+VERSION],urls=FILES.map(p=>new URL(p,ROOT).href);
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(urls.map(url=>new Request(url,{cache:'reload'}))))));self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const name of await caches.keys())if(name.startsWith('english-study-shell-')&&name!==CACHE)await caches.delete(name);await self.clients.claim();})()));
 function key(r){const u=new URL(r.url);if(u.pathname.includes('/packages/'))u.search='';return u.href;}

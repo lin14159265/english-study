@@ -337,8 +337,8 @@
     $('libraryCount').textContent = `${Object.keys(data.words).length} 个目标词条`;
     $('vocabularyScope').querySelector('[value=all]').textContent = `全部 ${Object.keys(data.words).length} 词条`;
   }
-  updateLibraryControls(); persist();
-  document.addEventListener('study-state-reloaded',e=>{
+  updateLibraryControls();
+  StudyState.onReload(async detail=>{
     clearTimeout(scrollTimer);closeWord();
     const visibleKey=state.currentKey, next=StudyState.get('reader',{});
     Object.keys(state).forEach(key=>delete state[key]);Object.assign(state,next);
@@ -348,13 +348,14 @@
     state.positionKeys=next.positionKeys?{...next.positionKeys}:Object.fromEntries(Object.entries(next.positions||{}).filter(([id])=>validId(Number(id))).map(([id,v])=>[data.articles[Number(id)-1].key,v]));
     state.resumeKey=next.resumeKey||next.currentKey||visibleKey;
     projectRecords();applySettings();learning.reloadState();
-    StudyLibrary.reload(e.detail?.packs).catch(e=>toast(e.message));
+    if(detail.packs!==undefined)await StudyLibrary.reload(detail.packs,{token:detail.libraryToken});
     renderDirectory();renderVocabulary();renderTabs();updateNavigation();workspace.reloadState();experience.reloadState();
   });
+  await StudyState.refresh();persist();
   StudyLibrary.attach({toast,closeAux:()=>{closeWord();closeDirectory();},beforeChange:()=>{recordPosition();persist();},onChange:({external=false}={})=>{
     const wasMissing=renderedKey!==state.currentKey;
     projectRecords();
-    learning.libraryChanged();
+    learning.libraryChanged({external});
     workspace.changed();
     updateLibraryControls(); renderArticle(); renderTabs(); if(!external)persist();
     if(state.currentKey===current().key)history.replaceState(null,'',articleHash(current()));
