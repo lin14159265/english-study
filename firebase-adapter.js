@@ -8,6 +8,14 @@
   const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true});
   const fault=(code,message)=>Object.assign(new Error(message),{code});
   const plain=x=>JSON.parse(JSON.stringify(x));
+  // A timeout does not cancel an SDK write. Retain the underlying request and
+  // reuse it on retry; the controller retains its durable operationId flight.
+  function deadline(promise,ms,label){
+    let timer;
+    return Promise.race([promise,new Promise((_,reject)=>{
+      timer=setTimeout(()=>reject(fault('sync-timeout',label+'超过等待时间；联网后会自动重试。')),ms);
+    })]).finally(()=>clearTimeout(timer));
+  }
   function canonical(value){
     if(value===null||typeof value!=='object')return JSON.stringify(value);
     if(Array.isArray(value))return '['+value.map(v=>canonical(v)??'null').join(',')+']';
@@ -106,6 +114,18 @@
     await sdk.setPersistence(auth,sdk.browserLocalPersistence);
     let current=null,closed=false,authError=null,authStop=null;
     const authCallbacks=new Set(),subscriptions=new Set(),known=new Set(),immutable=new Map(),joined=new Map();
+    const progressCallbacks=new Set(),requests=new Map();
+    const requestTimeout=options.requestTimeoutMs??30000;
+    function progress(stage,message){for(const callback of progressCallbacks)callback({stage,message});}
+    function network(key,work,label){
+      let pending=requests.get(key);
+      if(!pending){
+        pending=Promise.resolve().then(work);requests.set(key,pending);
+        const clear=()=>{if(requests.get(key)===pending)requests.delete(key);};pending.then(clear,clear);
+      }
+      return deadline(pending,requestTimeout,label);
+    }
+    const read=(group,id,label)=>network('read:'+group+'/'+id,()=>sdk.getDocFromServer(ref(group,id)),label);
     const CACHE_BYTES=48*1024*1024;let immutableBytes=0,joinedBytes=0,lastPull=null;
     function clearCaches(){known.clear();immutable.clear();joined.clear();immutableBytes=0;joinedBytes=0;lastPull=null;}
     function remember(map,key,value,bytes,kind){
@@ -135,7 +155,7 @@
     });
     async function readImmutable(group,id){
       assertOwner();const cached=immutable.get(group+'/'+id);if(cached)return plain(cached.value);
-      const doc=await sdk.getDocFromServer(ref(group,id));
+      const doc=await read(group,id,'读取云端资料');
       if(!doc.exists())throw fault('cloud-corrupt','云端资料缺失，本机记录未改动。');
       return doc.data();
     }
@@ -158,7 +178,7 @@
       const value=JSON.parse(text);remember(joined,cacheKey,value,metadata.bytes,'joined');return value;
     }
     async function pull(){
-      assertOwner();const doc=await sdk.getDocFromServer(headRef());
+      assertOwner();progress('cloud-head','正在检查云端版本…');const doc=await read('control','head','检查云端版本');
       if(!doc.exists())return {version:0,snapshot:null};
       const head=doc.data();
       if(!Number.isSafeInteger(head.version)||head.version<1||!/^[a-f0-9]{64}$/.test(head.manifestId)||head.digest!==head.manifestId)throw fault('cloud-corrupt','云端版本记录无效。');
@@ -168,7 +188,9 @@
       const manifest=await join(metadata),snapshot={state:{},packs:[]},paths=new Set();
       remember(immutable,'manifests/'+head.manifestId,metadata,encoder.encode(canonical(metadata)).length,'immutable');
       if(manifest.schema!==1||!Array.isArray(manifest.entries))throw fault('cloud-corrupt','云端清单格式无效。');
+      let completed=0;
       for(const entry of manifest.entries){
+        progress('cloud-download',`正在读取云端资料（${completed+1}/${manifest.entries.length}）…`);
         const path=entry.path;
         if(!Array.isArray(path)||path.length<1||path.length>2||path.some(x=>typeof x!=='string'||['__proto__','constructor','prototype'].includes(x)))throw fault('cloud-corrupt','云端记录路径无效。');
         const identity=canonical(path);if(paths.has(identity))throw fault('cloud-corrupt','云端记录路径重复。');paths.add(identity);
@@ -177,6 +199,7 @@
         else if(path[0]==='state'&&path.length===2)snapshot.state[path[1]]=value;
         else if(path.length===1&&path[0]!=='state'&&path[0]!=='packs')snapshot[path[0]]=value;
         else throw fault('cloud-corrupt','云端记录路径无效。');
+        completed++;
       }
       known.add('manifests/'+head.manifestId);
       lastPull={version:head.version,manifestId:head.manifestId,digest:head.digest,snapshot:plain(snapshot)};
@@ -186,7 +209,7 @@
       const missing=[];
       for(let offset=0;offset<items.length;offset+=16)await Promise.all(items.slice(offset,offset+16).map(async item=>{
         const identity=item.group+'/'+item.id;if(known.has(identity))return;
-        const existing=await sdk.getDocFromServer(ref(item.group,item.id));
+        const existing=await read(item.group,item.id,'检查云端分块');
         if(existing.exists()){
           if(canonical(existing.data())!==canonical(item.data))throw fault('cloud-corrupt','云端不可变资料发生冲突。');
           known.add(identity);
@@ -200,23 +223,28 @@
           if(sent.length&&bytes+size>BATCH_BYTES)break;
           batch.set(ref(item.group,item.id),item.data);sent.push(item);bytes+=size;offset++;
         }
-        assertOwner();await batch.commit();sent.forEach(item=>{const identity=item.group+'/'+item.id;known.add(identity);remember(immutable,identity,item.data,encoder.encode(canonical(item.data)).length,'immutable');});
+        assertOwner();const batchKey='batch:'+sent.map(item=>item.group+'/'+item.id).sort().join(',');
+        await network(batchKey,()=>batch.commit(),'上传云端资料');sent.forEach(item=>{const identity=item.group+'/'+item.id;known.add(identity);remember(immutable,identity,item.data,encoder.encode(canonical(item.data)).length,'immutable');});
       }
     }
     async function commit({operationId,expectedVersion,snapshot}){
       assertOwner();
       if(typeof operationId!=='string'||!/^[A-Za-z0-9_-]{8,160}$/.test(operationId)||!Number.isSafeInteger(expectedVersion)||expectedVersion<0)throw fault('invalid-operation','同步操作标识或基础版本无效。');
+      progress('cloud-encode','正在校验待上传资料…');
       const encoded=await encodeSnapshot(snapshot),receiptRef=ref('receipts',operationId);
       // Durable receipts are checked even when later devices have advanced the head.
-      const prior=await sdk.getDocFromServer(receiptRef);
+      progress('cloud-receipt','正在核对云端操作回执…');
+      const prior=await read('receipts',operationId,'核对云端操作回执');
       if(prior.exists()){
         const data=prior.data();if(data.digest!==encoded.digest)throw fault('operation-mismatch','同步操作标识已被不同内容使用。');
         return {...data,alreadyCommitted:true};
       }
+      progress('cloud-upload','正在上传变更资料…');
       await ensureImmutable([...encoded.chunks].map(([id,data])=>({group:'chunks',id,data})));
       await ensureImmutable([{group:'manifests',id:encoded.manifestId,data:encoded.manifest}]);
       assertOwner();
-      return sdk.runTransaction(db,async transaction=>{
+      progress('cloud-confirm','正在等待云端提交确认…');
+      return network('transaction:'+operationId+':'+encoded.digest,()=>sdk.runTransaction(db,async transaction=>{
         const receipt=await transaction.get(receiptRef),head=await transaction.get(headRef());
         if(receipt.exists()){
           const data=receipt.data();if(data.digest!==encoded.digest)throw fault('operation-mismatch','同步操作标识已被不同内容使用。');
@@ -228,7 +256,7 @@
         transaction.set(receiptRef,next);
         transaction.set(headRef(),{schema:1,operationId,version:next.version,manifestId:next.manifestId,digest:next.digest});
         return {...next,alreadyCommitted:false};
-      });
+      }),'等待云端提交确认');
     }
     return {
       onAuth(callback){authCallbacks.add(callback);queueMicrotask(()=>{if(authCallbacks.has(callback))callback(current,authError);});return ()=>authCallbacks.delete(callback);},
@@ -243,13 +271,15 @@
       },
       async signOut(){for(const stop of subscriptions)stop();subscriptions.clear();clearCaches();await sdk.signOut(auth);current=null;},
       user:()=>current,pull,commit,
+      onProgress(callback){progressCallbacks.add(callback);return()=>progressCallbacks.delete(callback);},
       subscribe(callback){
-        assertOwner();const stop=sdk.onSnapshot(headRef(),{includeMetadataChanges:true},snapshot=>{
+        assertOwner();let last=null;const stop=sdk.onSnapshot(headRef(),{includeMetadataChanges:true},snapshot=>{
           if(snapshot.metadata?.fromCache||snapshot.metadata?.hasPendingWrites)return;
-          callback(snapshot.exists()?snapshot.data():{version:0});
+          const head=snapshot.exists()?snapshot.data():{version:0},signature=canonical(head);
+          if(signature===last)return;last=signature;callback(head);
         },error=>callback({error}));subscriptions.add(stop);return ()=>{stop();subscriptions.delete(stop);};
       },
-      close(){closed=true;authStop?.();for(const stop of subscriptions)stop();subscriptions.clear();authCallbacks.clear();clearCaches();}
+      close(){closed=true;authStop?.();for(const stop of subscriptions)stop();subscriptions.clear();authCallbacks.clear();progressCallbacks.clear();clearCaches();}
     };
   }
   return {create,SDK_VERSION,CHUNK_BYTES,canonical,split,encodeSnapshot,loadSDK,rewriteAppImport};

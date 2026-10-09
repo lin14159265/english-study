@@ -19,13 +19,25 @@
     const defaults={theme:'system',fontSize:21,lineHeight:1.95,fontFamily:'serif',highlight:true,focus:false};
     return !!r.settings&&Object.entries(r.settings).some(([k,v])=>defaults[k]!==v);
   }
-  function create({store:S,core:C,adapter:A,allowedUid,onStatus=()=>{},followResume=()=>false,online=()=>true,clock=()=>Date.now(),delay=5000,autoSchedule=true}){
+  function create({store:S,core:C,adapter:A,allowedUid,onStatus=()=>{},followResume=()=>false,online=()=>true,clock=()=>Date.now(),delay=5000,slowAfter=20000,autoSchedule=true}){
     let user=null,epoch=0,active=false,running=false,again=false,timer=null,periodic=null,stopAuth=null,stopRemote=null,lastRun=0,retry=0,closed=false,status={phase:'signed-out',message:'未登录；学习记录保存在本机。'};
     const emit=(phase,message,more={})=>{status={phase,message,uid:user?.uid||null,...more};onStatus(status);return status;};
+    let stage=null,stageAt=0,slowTimer=null,lastSynced=null,quietCheck=false;
+    function slow(){
+      if(running&&active&&stage&&clock()-stageAt>=slowAfter)
+        emit('waiting',`同步等待较久：${stage.message} 本机记录保留，可继续阅读。`,{stage:stage.code,elapsedMs:clock()-stageAt});
+    }
+    function step(code,message){
+      stage={code,message};stageAt=clock();clearTimeout(slowTimer);
+      if(quietCheck&&['cloud-head','local-save'].includes(code))emit('checking','已同步；正在检查其他设备更新…',{...lastSynced,stage:code});
+      else emit('syncing',message+' 本机阅读可继续。',{stage:code});
+      slowTimer=setTimeout(slow,slowAfter);slowTimer.unref?.();
+    }
+    const stopProgress=A.onProgress?.(value=>{if(running&&active)step(value.stage,value.message);});
     function stop(){active=false;epoch++;stopRemote?.();stopRemote=null;clearTimeout(timer);timer=null;clearInterval(periodic);periodic=null;}
     function check(session){if(closed||!active||epoch!==session||!user||A.user()?.uid!==user.uid)throw fail('session-changed','登录状态已改变；本机记录保留。');}
     async function identity(next,error){
-      stop();user=next;if(error)emit('error',error.message);
+      stop();lastSynced=null;user=next;if(error)emit('error',error.message);
       if(!next)return emit('signed-out',error?.message||'未登录；学习记录保存在本机。');
       if(!allowedUid||allowedUid==='REPLACE_WITH_YOUR_UID')return emit('configuration','已登录。请将此 UID 填入网页配置和安全规则后再启用同步。');
       if(next.uid!==allowedUid)return emit('blocked','此账号未获授权；本机记录保留。');
@@ -65,14 +77,21 @@
         if(error.code==='remote-conflict'){await S.abandonFlight({uid:user.uid,operationId:flight.operationId,reason:'remote-conflict'});again=true;return;}
         throw error; // Unknown network outcome: retain flight and retry SAME operationId.
       }
-      check(session);await S.refresh?.();await S.flush();const record=await S.readSync();check(session);
+      check(session);step('local-confirm','正在保存云端确认到本机…');await S.refresh?.();await S.flush();const record=await S.readSync();check(session);
       const result=C.merge(flight.payload.localBase,wire(record),flight.payload.snapshot);
       if(result.conflicts.length)return saveConflict(record,result,{phase:'ack',remoteSnapshot:flight.payload.snapshot,remoteVersion:receipt.version,flight,followResume:flight.payload.followResume});
       await apply(record,result.snapshot,flight.payload.snapshot,receipt.version,{ackIds:flight.ackIds,ackOperationId:flight.operationId,followResume:flight.payload.followResume===true});
+      const latest=await S.readSync();check(session);
+      if(S.canSync()&&!latest.pending.length&&!latest.meta.flight&&C.equal(wire(latest),flight.payload.snapshot)){
+        retry=0;lastSynced={version:receipt.version,at:clock()};
+        emit('synced','云端已确认本机记录。',{...lastSynced});
+      }
       again=true;
     }
     async function cycle(session){
       if(!online())return emit('offline','当前离线；本机学习会继续，联网后自动同步。');
+      quietCheck=!!lastSynced;
+      step('local-save','正在检查本机保存…');
       await S.refresh?.();await S.flush();check(session);if(!S.canSync())return emit('local-pending','本机状态尚未安全保存或刷新，请先处理本机保存提示。');
       let record=await S.readSync();check(session);
       const context=record.meta.conflicts?.[0];
@@ -80,8 +99,9 @@
         if(context.localToken!==record.token&&context.phase!=='ack'){await S.writeConflicts({uid:user.uid,expectedToken:record.token,conflicts:[]});record=await S.readSync();}
         else return emit('conflict',`有 ${context.result?.conflicts?.length||1} 处两端修改需要选择。`,{conflicts:context.result?.conflicts||[]});
       }
-      emit('syncing','正在同步；本机阅读可继续。');
-      if(record.meta.flight)return sendFlight(record.meta.flight,session);
+      quietCheck=!!lastSynced&&!record.meta.flight&&!record.pending.length;
+      if(record.meta.flight){step('cloud-upload','正在上传待同步记录…');return sendFlight(record.meta.flight,session);}
+      step('cloud-head','正在检查云端版本…');
       const remote=await A.pull();check(session);
       await S.refresh?.();await S.flush();record=await S.readSync();check(session);if(!S.canSync())return emit('local-pending','本机保存尚未完成，请稍后重试。');
       const local=wire(record),fresh=!record.meta.base&&!meaningful(local),shouldFollow=fresh&&!!remote.snapshot&&followResume();
@@ -89,29 +109,31 @@
       const valid=C.validateSnapshot(result.snapshot);if(!valid.ok&&!result.conflicts.length)throw fail('invalid-snapshot',valid.errors[0]);
       if(result.conflicts.length)return saveConflict(record,result,{phase:'merge',remoteSnapshot:remote.snapshot,remoteVersion:remote.version,base:record.meta.base||null,followResume:shouldFollow});
       if(!remote.snapshot||!C.equal(result.snapshot,remote.snapshot)||record.pending.length){
+        quietCheck=false;step('local-queue','正在准备持久同步批次…');
         const flight=await S.saveFlight({uid:user.uid,expectedToken:record.token,payload:{snapshot:result.snapshot,expectedVersion:remote.version,localBase:local,followResume:shouldFollow}});
         check(session);return sendFlight(flight,session);
       }
       if(!C.equal(local,result.snapshot)||!C.equal(record.meta.base,remote.snapshot)||record.meta.remoteVersion!==remote.version){
+        quietCheck=false;step('local-apply','正在将云端记录应用到本机…');
         await apply(record,result.snapshot,remote.snapshot,remote.version,{followResume:shouldFollow});
       }
       const latest=await S.readSync();check(session);
       if(!S.canSync())return emit('local-pending','云端已接收，页面刷新尚未完成；请重试本机保存。');
       if(latest.pending.length||latest.meta.flight){again=true;return;}
-      retry=0;emit('synced','云端已同步。',{version:remote.version,at:clock()});
+      retry=0;lastSynced={version:remote.version,at:clock()};emit('synced','云端已同步。',{...lastSynced});
     }
     async function syncNow(){
       if(!active||closed)return status;if(running){again=true;return status;}
       running=true;again=false;lastRun=clock();const session=epoch;
       try{await cycle(session);}
       catch(error){
-        if(error.code==='session-changed')return status;
+        if(error.code==='session-changed'||epoch!==session||closed)return status;
         const current=S.status?.();
         if(current?.phase==='loading'||current?.phase==='conflict'||current?.phase==='error')emit('local-pending',current.message||error.message);
         else emit(error.code==='permission-denied'||error.code==='operation-mismatch'||error.code==='cloud-corrupt'?'error':'offline',error.message+' 本机记录已保留。');
         retry=Math.min(retry+1,6);
       }finally{
-        running=false;
+        clearTimeout(slowTimer);slowTimer=null;stage=null;running=false;quietCheck=false;
         if(active&&epoch===session&&status.phase!=='conflict'&&status.phase!=='error'){
           if(again)schedule(delay);else if(retry)schedule(Math.min(60000,5000*2**(retry-1)));
         }else if(active&&epoch!==session)schedule(0);
@@ -141,7 +163,7 @@
       emit('syncing','选择已保存在本机，正在同步。');schedule(0);return status;
     }
     stopAuth=A.onAuth((next,error)=>{identity(next,error).catch(error=>emit('error',error.message));});
-    return {syncNow,enable,resolve,schedule,status:()=>status,signIn:()=>A.signIn(),signOut:async()=>{stop();await A.signOut();user=null;emit('signed-out','已退出登录；本机记录保留。');},close(){closed=true;stop();stopAuth?.();},wire,meaningful};
+    return {syncNow,enable,resolve,schedule,wake(){slow();schedule(0);},status:()=>status,diagnostics:()=>({running,stage:stage?.code||null,stageAt,elapsedMs:stage?clock()-stageAt:0,lastSynced,retry}),signIn:()=>A.signIn(),signOut:async()=>{stop();lastSynced=null;await A.signOut();user=null;emit('signed-out','已退出登录；本机记录保留。');},close(){closed=true;stop();clearTimeout(slowTimer);stopAuth?.();stopProgress?.();},wire,meaningful};
   }
   return {create,wire,meaningful};
 });
@@ -162,7 +184,7 @@ if(typeof window!=='undefined'&&window.StudyCloudSync){
     let controller=null,adapter=null,loading=null,bootRetryTimer=null,bootFailures=0,lastStatus={phase:'configuration',message:'尚未配置云同步；本机阅读与 JSON 备份可用。'};
     function show(status){
       lastStatus=status;$('cloudState').textContent=status.message;
-      $('cloudStatus').textContent=({synced:'已同步',syncing:'同步中',offline:'离线待同步',conflict:'同步有冲突',migration:'备份后启用',error:'同步异常','local-pending':'待本机保存','signed-out':'未登录',configuration:'待配置',blocked:'账号未授权'})[status.phase]||'云同步';
+      $('cloudStatus').textContent=({synced:'已同步',checking:'已同步 · 检查更新',syncing:'同步中',waiting:'同步等待较久',offline:'离线待同步',conflict:'同步有冲突',migration:'备份后启用',error:'同步异常','local-pending':'待本机保存','signed-out':'未登录',configuration:'待配置',blocked:'账号未授权'})[status.phase]||'云同步';
       $('cloudAccount').textContent=adapter?.user()?.email||'';$('cloudUid').textContent=status.uid?'UID：'+status.uid:'';
       $('cloudLogin').disabled=!adapter||!!adapter.user();$('cloudLogout').hidden=!adapter?.user();
       $('cloudMigration').hidden=status.phase!=='migration';$('cloudConflicts').hidden=status.phase!=='conflict';
@@ -200,7 +222,9 @@ if(typeof window!=='undefined'&&window.StudyCloudSync){
     $('cloudBackup').addEventListener('click',()=>{dialog.close();window.StudyWorkspaceAPI?.openBackup();});
     document.addEventListener('study-local-commit',()=>controller?.schedule());
     window.addEventListener('online',()=>{if(controller)controller.schedule(0);else boot();});
-    window.addEventListener('focus',()=>{if(controller)controller.schedule();else boot();});
+    window.addEventListener('focus',()=>{if(controller)controller.wake();else boot();});
+    window.addEventListener('pageshow',()=>{if(controller)controller.wake();});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){if(controller)controller.wake();else boot();}});
     show(lastStatus);boot();
   });
 }

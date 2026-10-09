@@ -78,3 +78,33 @@ test('own already-committed upload is acknowledged without reloading packs or th
  const s=store(fresh(),'owner'),b=backend();s.change(r=>r.state.extra.ownDraft='keep');const token=s.r.token,{c}=await controller(s,b);t.after(()=>c.close());await drain(c);
  assert.equal(s.applied.length,0);assert.equal(s.confirmed.length,1);assert.equal(s.r.token,token);assert.equal(s.r.pending.length,0);assert.equal(s.r.meta.flight,undefined);assert.equal(c.status().phase,'synced');
 });
+test('durable upload acknowledgement shows success before a second cloud pull',async t=>{
+ const s=store(fresh(),'owner'),b=backend();s.change(r=>r.state.extra.note='saved');const {c}=await controller(s,b);t.after(()=>c.close());
+ await c.syncNow();assert.equal(c.status().phase,'synced');assert.equal(s.r.pending.length,0);assert.equal(s.r.meta.flight,undefined);assert.equal(b.version,1);
+});
+test('a stalled pull reports its stage, never runs a concurrent cycle, and recovers on completion',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),adapter=b.adapter();let finish,pulls=0;
+ adapter.pull=()=>{pulls++;return new Promise(resolve=>finish=resolve);};
+ const {c}=await controller(s,{adapter:()=>adapter},{slowAfter:15});t.after(()=>c.close());
+ const pending=c.syncNow();await new Promise(resolve=>setTimeout(resolve,25));
+ assert.equal(c.status().phase,'waiting');assert.equal(c.diagnostics().stage,'cloud-head');
+ await c.syncNow();c.wake();assert.equal(pulls,1);assert.equal(c.diagnostics().running,true);
+ finish({version:0,snapshot:null});await pending;assert.equal(c.diagnostics().running,false);assert.equal(c.status().phase,'synced');
+});
+test('a timeout retains the exact durable flight, releases the cycle and permits retry',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),adapter=b.adapter(),commit=adapter.commit;let fail=true;
+ adapter.commit=request=>{if(fail){fail=false;return Promise.reject(Object.assign(Error('wait timed out'),{code:'sync-timeout'}));}return commit(request);};
+ s.change(r=>r.state.extra.note='retain');const {c}=await controller(s,{adapter:()=>adapter});t.after(()=>c.close());
+ await c.syncNow();const id=s.r.meta.flight.operationId;assert.equal(c.status().phase,'offline');assert.equal(c.diagnostics().running,false);assert.equal(s.r.pending.length,1);
+ await c.syncNow();assert.equal(b.commits[0].operationId,id);assert.equal(c.status().phase,'synced');assert.equal(s.r.pending.length,0);
+});
+test('idle version checks retain a distinct acknowledged status while waiting for the server',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),adapter=b.adapter();const {c}=await controller(s,{adapter:()=>adapter});t.after(()=>c.close());await drain(c);
+ let finish;adapter.pull=()=>new Promise(resolve=>finish=resolve);const pending=c.syncNow();await wait();
+ assert.equal(c.status().phase,'checking');assert.ok(c.status().at);finish({version:b.version,snapshot:copy(b.snapshot)});await pending;assert.equal(c.status().phase,'synced');
+});
+test('late network failure after logout cannot replace the signed-out state',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),adapter=b.adapter();let reject;adapter.pull=()=>new Promise((_,no)=>reject=no);
+ const {c}=await controller(s,{adapter:()=>adapter});t.after(()=>c.close());const pending=c.syncNow();await wait();await c.signOut();
+ reject(Object.assign(Error('late timeout'),{code:'sync-timeout'}));await pending;assert.equal(c.status().phase,'signed-out');
+});

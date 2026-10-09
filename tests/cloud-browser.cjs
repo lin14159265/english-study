@@ -122,7 +122,39 @@ async function seed(p){await p.goto(origin+'/__qa/seed');await p.evaluate(async 
   });
   await test('a lost acknowledgement retries a persistent operation ID after reopening and a later cloud head',async()=>{
     cloud.loseAckFor=await a.evaluate(()=>window.__qaClient);await mutate(a,'unknown');await a.evaluate(()=>StudyCloudAPI.syncNow());await phase(a,'offline');const pending=await a.evaluate(()=>StudyState.readSync()),operation=pending.meta.flight.operationId,receipt=cloud.receipts.get(operation);assert.ok(receipt);await a.close();
-    await settle(b);await mutate(b,'advance');await settle(b);assert.ok(cloud.version>receipt.version);a=await desktop.newPage();await watch(a,'desktop receipt restart');await a.goto(origin+'/');await ready(a);await phase(a,'synced');const restored=await a.evaluate(()=>StudyState.readSync());assert.equal(restored.meta.flight,undefined);assert.equal(restored.pending.length,0);assert.ok(cloud.attempts.get(operation)>=2);assert.equal(cloud.receipts.get(operation).version,receipt.version);assert.equal(restored.state.learning.drafts['unknown-receipt'].own,'server received once');assert.equal(restored.state.learning.drafts['later-device'].own,'head advanced later');
+    await settle(b);await mutate(b,'advance');await settle(b);assert.ok(cloud.version>receipt.version);a=await desktop.newPage();await watch(a,'desktop receipt restart');await a.goto(origin+'/');await ready(a);
+    // An old durable receipt can confirm this device before its automatic next
+    // check downloads a later device's head. Await that actual business update.
+    await a.waitForFunction(()=>StudyState.get('learning').drafts['later-device']?.own==='head advanced later'&&StudyCloudAPI.status().phase==='synced',null,{timeout:20000});
+    const restored=await a.evaluate(()=>StudyState.readSync());assert.equal(restored.meta.flight,undefined);assert.equal(restored.pending.length,0);assert.ok(cloud.attempts.get(operation)>=2);assert.equal(cloud.receipts.get(operation).version,receipt.version);assert.equal(restored.state.learning.drafts['unknown-receipt'].own,'server received once');assert.equal(restored.state.learning.drafts['later-device'].own,'head advanced later');
+  });
+  await test('a durable upload acknowledgement immediately updates the visible saved status without another pull',async()=>{
+    await settle(a);const before=cloud.writes;
+    await a.evaluate(async()=>{
+      const learning=structuredClone(StudyState.get('learning'));learning.drafts['immediate-ack']={own:'acknowledged in the same cycle',reason:'',categories:[]};StudyState.set('learning',learning);await StudyState.flush();
+    });
+    await ackMemory(a);await a.evaluate(()=>StudyCloudAPI.syncNow());
+    const record=await a.evaluate(()=>StudyState.readSync());assert.equal(record.pending.length,0);assert.equal(record.meta.flight,undefined);assert.equal(cloud.writes,before+1);
+    assert.equal(await a.evaluate(()=>StudyCloudAPI.status().phase),'synced');assert.equal(await a.locator('#cloudStatus').textContent(),'已同步');
+  });
+  await test('a stalled update check shows its stage, survives return events without duplicate pulls and safely recovers',async()=>{
+    await a.evaluate(()=>{
+      window.__qaOriginalPull=__qaAdapter.pull;window.__qaStalledPulls=0;
+      __qaAdapter.pull=()=>{window.__qaStalledPulls++;return new Promise((resolve,reject)=>{window.__qaRejectPull=reject;});};
+      window.__qaStalledRun=StudyCloudAPI.syncNow();
+    });
+    await phase(a,'checking');assert.equal(await a.locator('#cloudStatus').textContent(),'已同步 · 检查更新');
+    const before=await a.evaluate(()=>StudyState.readSync());
+    if(!await a.locator('#cloudDialog').evaluate(el=>el.open))await a.locator('#cloudButton').click();
+    await a.waitForFunction(()=>StudyCloudAPI.status().phase==='waiting',null,{timeout:30000});
+    assert.equal(await a.locator('#cloudStatus').textContent(),'同步等待较久');assert.match(await a.locator('#cloudState').textContent(),/检查云端版本/);
+    assert.equal(await a.locator('#reader').evaluate(el=>el.inert),false);await a.screenshot({path:path.join(out,'stalled-cloud-stage.png')});
+    await a.evaluate(()=>{document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('pageshow'));window.dispatchEvent(new Event('focus'));});
+    await a.locator('#cloudNow').click();assert.equal(await a.evaluate(()=>window.__qaStalledPulls),1);
+    await a.evaluate(async()=>{__qaAdapter.pull=window.__qaOriginalPull;window.__qaRejectPull(Object.assign(Error('Injected SDK deadline'),{code:'sync-timeout'}));await window.__qaStalledRun;});
+    await phase(a,'offline');assert.match(await a.locator('#cloudState').textContent(),/本机记录已保留/);
+    const failed=await a.evaluate(()=>StudyState.readSync());assert.deepEqual(failed.state,before.state);assert.equal(failed.pending.length,before.pending.length);assert.equal(failed.meta.flight,before.meta.flight);
+    await a.locator('#cloudNow').click();await phase(a,'synced');assert.equal(await a.locator('#reader').evaluate(el=>el.inert),false);await a.screenshot({path:path.join(out,'stalled-cloud-recovered.png')});await a.locator('#cloudDialog .close-dialog').click();
   });
   assert.deepEqual(errors,[]);await desktop.close();await mobile.close();
   fs.writeFileSync(path.join(out,'cloud-browser-results.json'),JSON.stringify({browser:browser.version(),backend:'synthetic HTTP adapter, not Google OAuth/Firestore',origin,checks,errors,cloud:{version:cloud.version,writes:cloud.writes,receiptCount:cloud.receipts.size}},null,2));console.log(JSON.stringify({checks,errors,version:cloud.version},null,2));

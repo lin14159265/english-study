@@ -17,7 +17,7 @@ function harness(options={}){
     onSnapshot:(key,options,fn)=>{fn(snapshot(key));return ()=>{};}
   };
   const config={apiKey:'public',projectId:'test',appId:'publicapp',authDomain:'test.firebaseapp.com',allowedUid:'owner'};
-  return {sdk,config,data,metrics,auth,make:cfg=>A.create({...config,...cfg},{loadSDK:async()=>sdk})};
+  return {sdk,config,data,metrics,auth,make:(cfg,options)=>A.create({...config,...cfg},{loadSDK:async()=>sdk,...options})};
 }
 const sample=(current='original/7')=>({state:{reader:{currentKey:current,readKeys:['missing/story']},learning:{cards:[{note:'中文😀',dueAt:123}]},extra:{edits:{p:{title:'私人修订'}}}},packs:[{key:'local:private',source:'local',payload:{articles:[{en:'private',zh:'私人'}]}}],rollback:{state:{reader:{currentKey:'old/story'}},packs:[]}});
 test('SDK service graph rewrites the exact pinned app dependency and rejects unexpected imports',()=>{
@@ -116,4 +116,28 @@ test('remote reader-only head refresh reuses verified private pack and other sta
   assert.equal(reader.metrics.reads-before,4); // head, new manifest, manifest text, reader text
   const refreshed=reader.metrics.readPaths.slice(paths);assert.equal(refreshed.filter(path=>path.includes('/chunks/')).length,2);
   source.close();target.close();
+});
+test('a hung server read times out, retry reuses the request and later recovers without writes',async t=>{
+  const h=harness();let finish,calls=0;
+  h.sdk.getDocFromServer=()=>{calls++;return new Promise(resolve=>finish=resolve);};
+  const api=await h.make(null,{requestTimeoutMs:20});t.after(()=>api.close());
+  await assert.rejects(api.pull(),{code:'sync-timeout'});
+  await assert.rejects(api.pull(),{code:'sync-timeout'});assert.equal(calls,1);
+  const recovered=api.pull();finish({exists:()=>false});
+  assert.deepEqual(await recovered,{version:0,snapshot:null});assert.equal(h.metrics.writes,0);
+});
+test('a late atomic commit is retried with a permanent receipt and publishes once',async t=>{
+  const h=harness(),original=h.sdk.runTransaction;let finish,calls=0;
+  h.sdk.runTransaction=async(...args)=>{calls++;const result=await original(...args);await new Promise(resolve=>finish=resolve);return result;};
+  const api=await h.make(null,{requestTimeoutMs:20});t.after(()=>api.close());
+  const request={operationId:'op_timed_out_001',expectedVersion:0,snapshot:sample()};
+  await assert.rejects(api.commit(request),{code:'sync-timeout'});
+  const retried=await api.commit(request);assert.equal(retried.alreadyCommitted,true);assert.equal(retried.version,1);assert.equal(calls,1);
+  finish();assert.equal((await api.pull()).version,1);
+});
+test('repeated identical server metadata notifications do not schedule another head cycle',async t=>{
+  const h=harness();let notify;h.sdk.onSnapshot=(ref,opts,fn)=>{notify=fn;return()=>{};};
+  const api=await h.make();t.after(()=>api.close());const heads=[];api.subscribe(value=>heads.push(value));
+  const snapshot=()=>({metadata:{fromCache:false,hasPendingWrites:false},exists:()=>true,data:()=>({version:1,manifestId:'same'})});
+  notify(snapshot());notify(snapshot());assert.equal(heads.length,1);
 });
