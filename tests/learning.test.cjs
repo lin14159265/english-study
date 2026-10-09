@@ -88,3 +88,7 @@ test('recently removed records remain available after reload for undo',()=>{
 });
 
 test('a corrected sense cannot silently reattach a saved old sense to the same sentence',()=>{const card=originalCard(0),changed={...data,words:{...data.words,value:{...data.words.value,uses:data.words.value.uses.map(u=>({...u,sense:'来源已修正'}))}}};assert.equal(C.locate(changed,card),null);assert.equal(card.sense,'价值');});
+test('forward-compatible personal learning fields survive loading and known-record updates',()=>{
+  const raw={...C.empty(),futurePersonal:{notes:['private'],setting:true}};
+  const loaded=C.load(raw);assert.deepEqual(loaded.futurePersonal,raw.futurePersonal);loaded.futurePersonal.notes.push('later');assert.equal(raw.futurePersonal.notes.length,1);
+});

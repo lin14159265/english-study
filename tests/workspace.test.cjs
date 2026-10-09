@@ -11,6 +11,13 @@ test('complete backups parse without losing source material, positions or draft 
   const b=backup();b.state.learning.drafts.x={own:'我自己的理解',reason:'否定理解错',categories:['否定']};
   const r=C.parseBackup(JSON.stringify(b));assert.equal(r.ok,true);assert.equal(r.backup.state.reader.positionKeys['original/1'],200);assert.equal(r.backup.state.learning.drafts.x.own,'我自己的理解');
 });
+test('version 1 backup merge retains missing source progress and the selected optional resume key',()=>{
+  const a=backup(),b=backup();b.state.reader.currentKey='missing/story';b.state.reader.resumeKey='other-missing/story';b.state.reader.readKeys.push('missing/story');b.state.reader.positionKeys['missing/story']=900;
+  const merged=C.restorePlan(a,b,'merge','backup').backup;assert.equal(merged.version,1);assert.equal(merged.state.reader.resumeKey,'other-missing/story');assert.equal(merged.state.reader.positionKeys['missing/story'],900);assert.ok(C.parseBackup(JSON.stringify(merged)).ok);assert.ok(C.validateBackup(a).ok);
+});
+test('optional resume keys follow article source remapping in independent backup copies',()=>{
+  const a=backup(),b=backup();b.base.articles[0].zhTitle='另一个原始版本';b.state.reader.resumeKey='original/1';const copied=C.independentCopies(a,b);assert.match(copied.state.reader.resumeKey,/^original-copy-[^/]+\/article-01$/);assert.ok(C.validateBackup(copied).ok);
+});
 test('corrupt, unsupported and invalid learning backups are rejected before restoring',()=>{
   assert.equal(C.parseBackup('{no').ok,false);const b=backup();b.version=2;assert.equal(C.validateBackup(b).ok,false);
   b.version=1;b.state.learning.cards=[{id:'broken'}];assert.equal(C.validateBackup(b).ok,false);
@@ -49,4 +56,17 @@ test('original conflict copies keep removed cards and revision undo attached to 
  const mapped=C.remapOriginal(P.validate(revision.payload).compiled),card=L.usage(mapped,'value',mapped.words.value.uses[0]);b.state.learning.trash.push({kind:'word',record:card});b.state.learning.attempts[card.id]={rating:'known',guess:'价值',at:1};
  const r=C.restorePlan(a,b,'merge','copy').backup,id=r.packs.find(p=>p.id.startsWith('original-copy-')).id,removed=r.state.learning.trash[0].record;
  assert.equal(removed.wordKey,id+'::value');assert.equal(removed.articleKey,id+'/article-01');assert.ok(r.state.learning.attempts[removed.id]);assert.equal(r.state.extra.editUndo.sourceId,id);assert.equal(r.state.extra.editUndo.edit.payload.id,id);assert.equal(C.validateBackup(r).ok,true);
+});
+test('optional semantic anchors round trip version 1 and obey backup conflict choice',()=>{
+  const a=backup(),b=backup(),anchor={version:1,articleKey:'missing/story',contentVersion:'body-1',paragraph:3,offset:99,before:'before',after:'after',scrollY:550,viewportOffset:52,updatedAt:123};
+  b.state.reader.anchorKeys={'missing/story':anchor};const merged=C.restorePlan(a,b).backup;
+  assert.deepEqual(merged.state.reader.anchorKeys['missing/story'],anchor);assert.ok(C.parseBackup(JSON.stringify(merged)).ok);
+  a.state.reader.anchorKeys={'missing/story':{...anchor,offset:44}};
+  assert.equal(C.restorePlan(a,b,'merge','current').backup.state.reader.anchorKeys['missing/story'].offset,44);
+  assert.equal(C.restorePlan(a,b,'merge','backup').backup.state.reader.anchorKeys['missing/story'].offset,99);
+  b.state.reader.anchorKeys['missing/story'].articleKey='other';assert.equal(C.validateBackup(b).ok,false);
+});
+test('backup independent copies rewrite semantic anchor key and embedded article identity',()=>{
+  const a=backup(),b=backup();b.base.articles[0].zhTitle='修改';b.state.reader.anchorKeys={'original/1':{version:1,articleKey:'original/1',contentVersion:'v1',paragraph:0,offset:10,before:'a',after:'b',scrollY:300,viewportOffset:52,updatedAt:0}};
+  const copy=C.independentCopies(a,b),[key,anchor]=Object.entries(copy.state.reader.anchorKeys)[0];assert.match(key,/^original-copy-/);assert.equal(anchor.articleKey,key);assert.ok(C.validateBackup(copy).ok);
 });

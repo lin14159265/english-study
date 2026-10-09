@@ -144,9 +144,9 @@
       if(!C.saveNote(state,s,draft.own,draft.categories||[],draft.reason)){$('sentenceStatus').textContent='请选择至少一种易错原因。';$('sentenceErrors').querySelector('input').focus();return;}
       persist();renderReview();$('saveSentence').textContent='更新错句记录';$('sentenceStatus').textContent='正在保存错句…';try{await root.StudyState.flush();if(sentenceList[sentenceIndex]?.id===s.id)$('sentenceStatus').textContent='已保存到复习页的错句本';}catch(e){$('sentenceStatus').textContent='未保存：'+e.message;}
     });
-    function libraryChanged() {if(C.migrate(state,legacy,data))persist();articleChanged();renderReview();}
+    function libraryChanged({external=false}={}) {if(C.migrate(state,legacy,data)&&!external)persist();articleChanged();renderReview();}
     return {entry,saved,toggle,prepare,renderReview,articleChanged,libraryChanged,
-      reloadState:()=>{state=C.load(root.StudyState.get('learning',null));renderReview();articleChanged();},setReviewView:v=>{reviewView=['words','sentences','questions'].includes(v)?v:'words';renderReview();},selected:()=>selected,count:()=>state.cards.length+state.notes.length+questionCount()};
+      reloadState:()=>{legacy=root.StudyState.get('reader',{}).review||[];state=C.load(root.StudyState.get('learning',null));selected=null;$('guessMode').checked=state.guessMode;renderReview();articleChanged();},setReviewView:v=>{reviewView=['words','sentences','questions'].includes(v)?v:'words';renderReview();},selected:()=>selected,count:()=>state.cards.length+state.notes.length+questionCount()};
   }
   root.StudyLearning={create};
 })(window);
