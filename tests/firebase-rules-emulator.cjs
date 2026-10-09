@@ -10,7 +10,9 @@ const uid='test-owner',projectId='demo-english-study';
 const host=process.env.FIRESTORE_EMULATOR_HOST||'127.0.0.1:8080';
 before(async()=>{
   const [hostname,port]=host.split(':');
-  env=await initializeTestEnvironment({projectId,firestore:{host:hostname,port:Number(port),rules:fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8').replaceAll('REPLACE_WITH_YOUR_UID',uid)}});
+  const rules=fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8')
+    .replace(/request\.auth\.uid == '[^']*'/,`request.auth.uid == '${uid}'`);
+  env=await initializeTestEnvironment({projectId,firestore:{host:hostname,port:Number(port),rules}});
 });
 after(async()=>{await env?.cleanup();});
 const db=(identity=uid,provider='google.com')=>identity?env.authenticatedContext(identity,{firebase:{sign_in_provider:provider}}).firestore():env.unauthenticatedContext().firestore();

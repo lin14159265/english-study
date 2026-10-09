@@ -4,7 +4,7 @@ service cloud.firestore {
     // Replace with the UID shown in Authentication > Users; never an email.
     function owner(uid) {
       return request.auth != null
-        && request.auth.uid == 'REPLACE_WITH_YOUR_UID'
+        && request.auth.uid == 'ykZq85VjLCNwkOrSUmDurEQ3z272'
         && request.auth.uid == uid
         && request.auth.token.firebase.sign_in_provider == 'google.com';
     }
