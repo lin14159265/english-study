@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Replace with the UID shown in Authentication > Users; never an email.
+    function owner(uid) {
+      return request.auth != null
+        && request.auth.uid == 'REPLACE_WITH_YOUR_UID'
+        && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+    function hash(value) { return value is string && value.matches('^[a-f0-9]{64}$'); }
+    function operation(value) { return value is string && value.matches('^[A-Za-z0-9_-]{8,160}$'); }
+    function headPath(uid) { return /databases/$(database)/documents/users/$(uid)/control/head; }
+    function receiptPath(uid, id) { return /databases/$(database)/documents/users/$(uid)/receipts/$(id); }
+    function manifestPath(uid, id) { return /databases/$(database)/documents/users/$(uid)/manifests/$(id); }
+    function validHead(data) {
+      return data.keys().hasOnly(['schema','operationId','version','manifestId','digest'])
+        && data.keys().hasAll(['schema','operationId','version','manifestId','digest'])
+        && data.schema == 1 && operation(data.operationId)
+        && data.version is int && data.version > 0
+        && hash(data.manifestId) && data.digest == data.manifestId;
+    }
+    function validReceipt(data, id) {
+      return data.keys().hasOnly(['schema','operationId','expectedVersion','version','manifestId','digest'])
+        && data.keys().hasAll(['schema','operationId','expectedVersion','version','manifestId','digest'])
+        && data.schema == 1 && operation(id) && data.operationId == id
+        && data.expectedVersion is int && data.expectedVersion >= 0
+        && data.version is int && data.version == data.expectedVersion + 1
+        && hash(data.manifestId) && data.digest == data.manifestId;
+    }
+    function receiptForHead(uid, data) {
+      let receipt = getAfter(receiptPath(uid, data.operationId)).data;
+      return receipt.operationId == data.operationId
+        && receipt.version == data.version && receipt.digest == data.digest
+        && receipt.manifestId == data.manifestId
+        && !exists(receiptPath(uid, data.operationId))
+        && exists(manifestPath(uid, data.manifestId));
+    }
+    match /users/{uid}/control/head {
+      allow read: if owner(uid);
+      allow create: if owner(uid) && validHead(request.resource.data)
+        && request.resource.data.version == 1 && receiptForHead(uid, request.resource.data);
+      allow update: if owner(uid) && validHead(request.resource.data)
+        && request.resource.data.version == resource.data.version + 1
+        && receiptForHead(uid, request.resource.data);
+      allow delete: if false;
+    }
+    match /users/{uid}/receipts/{id} {
+      allow read: if owner(uid);
+      allow create: if owner(uid) && validReceipt(request.resource.data, id)
+        && ((!exists(headPath(uid)) && request.resource.data.expectedVersion == 0)
+          || (exists(headPath(uid)) && get(headPath(uid)).data.version == request.resource.data.expectedVersion))
+        && getAfter(headPath(uid)).data.operationId == id
+        && getAfter(headPath(uid)).data.version == request.resource.data.version
+        && getAfter(headPath(uid)).data.digest == request.resource.data.digest
+        && getAfter(headPath(uid)).data.manifestId == request.resource.data.manifestId;
+      allow update, delete: if false;
+    }
+    match /users/{uid}/chunks/{id} {
+      allow read: if owner(uid);
+      allow create: if owner(uid) && hash(id)
+        && request.resource.data.keys().hasOnly(['schema','text','bytes'])
+        && request.resource.data.keys().hasAll(['schema','text','bytes'])
+        && request.resource.data.schema == 1
+        && request.resource.data.text is string && request.resource.data.text.size() <= 184320
+        && request.resource.data.bytes is int && request.resource.data.bytes >= 0 && request.resource.data.bytes <= 184320;
+      // Concurrent devices may write an identical content hash; no mutation allowed.
+      allow update: if owner(uid) && request.resource.data == resource.data;
+      allow delete: if false;
+    }
+    match /users/{uid}/manifests/{id} {
+      allow read: if owner(uid);
+      allow create: if owner(uid) && hash(id)
+        && request.resource.data.keys().hasOnly(['schema','digest','bytes','chunks'])
+        && request.resource.data.keys().hasAll(['schema','digest','bytes','chunks'])
+        && request.resource.data.schema == 1 && request.resource.data.digest == id
+        && request.resource.data.bytes is int && request.resource.data.bytes >= 0
+        && request.resource.data.chunks is list && request.resource.data.chunks.size() > 0
+        && request.resource.data.chunks.size() <= 1024;
+      allow update: if owner(uid) && request.resource.data == resource.data;
+      allow delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

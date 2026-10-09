@@ -67,6 +67,8 @@
   function load(raw) {
     const s = empty();
     if (!raw || raw.version !== 1) return s;
+    // Keep forward-compatible personal fields when this client edits known records.
+    for(const [k,v]of Object.entries(raw))if(!Object.hasOwn(s,k)&&!['__proto__','constructor','prototype'].includes(k))s[k]=JSON.parse(JSON.stringify(v));
     const validBase = r=>r && typeof r.id==='string' && typeof r.articleKey==='string' && Number.isInteger(r.paragraph);
     s.cards = Array.isArray(raw.cards) ? raw.cards.filter(r=>validBase(r) && ['word','wordKey','sense','context','allowed'].every(k=>typeof r[k]==='string')) : [];
     s.notes = Array.isArray(raw.notes) ? raw.notes.filter(r=>validBase(r) && ['en','reference','own'].every(k=>typeof r[k]==='string')).map(r=>({...r,categories:Array.isArray(r.categories)?r.categories.filter(c=>categories.includes(c)):[]})) : [];

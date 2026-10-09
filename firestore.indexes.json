@@ -1,0 +1,7 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {"collectionGroup":"chunks","fieldPath":"text","indexes":[]},
+    {"collectionGroup":"manifests","fieldPath":"chunks","indexes":[]}
+  ]
+}

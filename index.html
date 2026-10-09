@@ -6,27 +6,33 @@
   <meta name="theme-color" content="#ffffff">
   <meta name="description" content="一次读一篇，在语境中巩固四级词汇。按需查词、核对译文，并保存阅读进度。">
   <title>English Study · 语境阅读</title>
-  <script>try{let s=JSON.parse(localStorage.getItem('english-study.reader.v1')||'{}');let t=s.settings?.theme||'system';document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;}catch{}</script>
+  <script>window.StudyEntryHash=location.hash;try{let s=JSON.parse(localStorage.getItem('english-study.reader.v1')||'{}');let t=s.settings?.theme||'system';document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;}catch{}</script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2322685f'/%3E%3Cpath d='M7 8h7l2 2 2-2h7v16h-7l-2 2-2-2H7z' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M16 10v16' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="reader.css?v=20261009-retention-1a-v3">
-  <link rel="stylesheet" href="experience.css?v=20261009-retention-1a-v3">
+  <link rel="stylesheet" href="reader.css?v=20261009-full-sync-v1">
+  <link rel="stylesheet" href="experience.css?v=20261009-full-sync-v1">
   <script defer src="content.js?v=20260930-1"></script>
-  <script defer src="package-core.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="import-core.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="imports.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="learning-core.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="learning.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="practice-content.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="tools-core.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="experience-core.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="workspace-core.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="workspace-store.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="workspace-ui.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="experience-ui.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="offline.js?v=20261009-retention-1a-v3"></script>
-  <script defer src="reader.js?v=20261009-retention-1a-v3"></script>
+  <script defer src="package-core.js?v=20261009-full-sync-v1"></script>
+  <script defer src="import-core.js?v=20261009-full-sync-v1"></script>
+  <script defer src="imports.js?v=20261009-full-sync-v1"></script>
+  <script defer src="learning-core.js?v=20261009-full-sync-v1"></script>
+  <script defer src="learning.js?v=20261009-full-sync-v1"></script>
+  <script defer src="practice-content.js?v=20261009-full-sync-v1"></script>
+  <script defer src="tools-core.js?v=20261009-full-sync-v1"></script>
+  <script defer src="experience-core.js?v=20261009-full-sync-v1"></script>
+  <script defer src="workspace-core.js?v=20261009-full-sync-v1"></script>
+  <script defer src="workspace-store.js?v=20261009-full-sync-v1"></script>
+  <script defer src="workspace-ui.js?v=20261009-full-sync-v1"></script>
+  <script defer src="experience-ui.js?v=20261009-full-sync-v1"></script>
+  <script defer src="offline.js?v=20261009-full-sync-v1"></script>
+  <script defer src="position-core.js?v=20261009-full-sync-v1"></script>
+  <script defer src="sync-core.js?v=20261009-full-sync-v1"></script>
+  <script defer src="firebase-config.js?v=20261009-full-sync-v1"></script>
+  <script defer src="firebase-adapter.js?v=20261009-full-sync-v1"></script>
+  <script defer src="reader.js?v=20261009-full-sync-v1"></script>
+  <script defer src="cloud-sync.js?v=20261009-full-sync-v1"></script>
 </head>
 <body>
+  <p id="syncApplyingNotice" class="settings-note sync-applying-notice" role="status" hidden></p>
   <a class="skip-link" href="#reader">跳到正文</a>
   <div id="sidebarBackdrop" class="backdrop" hidden></div>
   <aside id="sidebar" class="sidebar" aria-label="文章目录">
@@ -41,6 +47,7 @@
     <button id="directoryButton" class="icon-button" data-icon="book" aria-label="打开文章目录" title="文章目录"></button>
     <span class="mobile-brand">English Study</span>
     <div class="topbar-actions">
+      <button id="cloudButton" class="text-button" aria-label="云同步账号与状态"><span id="cloudStatus">云同步</span></button>
       <button id="toolsButton" class="secondary-button import-button" aria-label="学习工具" title="学习工具" data-icon-before="book"><span>学习工具</span></button>
       <button id="importButton" class="secondary-button import-button" aria-label="导入与资料管理" title="导入与资料管理" data-icon-before="plus"><span>导入资料</span></button>
       <button id="focusButton" class="icon-button" data-icon="focus" aria-label="进入专注阅读" aria-pressed="false" title="专注阅读"></button>
@@ -50,7 +57,7 @@
   </header>
   <main id="reader" tabindex="-1">
     <div class="reading-column">
-      <div class="article-navigation"><span id="articleNumber">第 1 篇 / 25 篇</span><div><button class="text-button prev-button" data-icon-before="left">上一篇</button><span class="nav-divider"></span><button class="text-button next-button" data-icon-after="right">下一篇</button></div></div>
+      <div class="article-navigation"><button id="continueReading" class="text-button" hidden>继续上次阅读</button><span id="articleNumber">第 1 篇 / 25 篇</span><div><button class="text-button prev-button" data-icon-before="left">上一篇</button><span class="nav-divider"></span><button class="text-button next-button" data-icon-after="right">下一篇</button></div></div>
       <h1 id="articleTitle" lang="en">A Small Device, a Real Problem</h1>
       <p id="articleMeta" class="article-meta"></p>
       <div class="tabs" role="tablist" aria-label="阅读与辅助内容">
@@ -85,6 +92,15 @@
     </div>
   </main>
   <div id="wordPopover" class="word-popover" role="dialog" aria-label="单词用义" hidden><div class="popover-heading"><h2 id="popoverWord" lang="en"></h2><button id="closeWord" class="icon-button" data-icon="x" aria-label="关闭单词解释"></button></div><p id="popoverContext" lang="en" class="word-context"></p><div id="wordQuiz" hidden><label class="learning-label" for="wordGuess">这个词在此句是什么意思？</label><input id="wordGuess" class="learning-input" type="text" maxlength="2000"><button id="revealWord" class="secondary-button">核对本次用义</button></div><div id="wordAnswer"><small class="field-label">本篇用义</small><p id="popoverSense" class="word-sense"></p><details id="allowedDetails"><summary>词表允许义项</summary><p id="popoverAllowed"></p></details></div><div id="rateWord" class="word-ratings" role="group" aria-label="核对后自评"><button class="secondary-button" data-rating="known" aria-pressed="false">认识</button><button class="secondary-button" data-rating="uncertain" aria-pressed="false">模糊</button><button class="secondary-button" data-rating="wrong-sense" aria-pressed="false">误用了另一个义项</button></div><p class="quiz-note">模糊或义项误判会加入复习。按自己的判断记录。</p><p id="wordQuizStatus" class="learning-meta" role="status"></p><button id="saveWord" class="secondary-button" data-icon-before="plus">收藏本次用义</button><div class="learning-actions"><button id="wordHistory" class="text-button">历史语境</button><button id="wordCorrect" class="text-button">纠正此处用义</button></div></div>
+  <dialog id="cloudDialog" class="settings-dialog" aria-labelledby="cloudTitle">
+    <div class="dialog-heading"><h2 id="cloudTitle">云同步</h2><button class="icon-button close-dialog" data-icon="x" aria-label="关闭云同步"></button></div>
+    <p id="cloudState" role="status">未配置云同步；本机阅读可用。</p><p id="cloudAccount"></p><p id="cloudUid" class="settings-note"></p>
+    <p class="settings-note">阅读、学习历史、草稿、私人资料和修订自动同步；离线继续保存在本机。退出登录保留本机数据。共用设备请使用独立浏览器个人资料。</p>
+    <div class="learning-actions"><button id="cloudLogin" class="primary-button" disabled>Google 登录</button><button id="cloudLogout" class="text-button" hidden>退出登录</button><button id="cloudNow" class="secondary-button" disabled>立即同步</button></div>
+    <section id="cloudMigration" hidden><p>首次启用前请导出完整 JSON 备份，并在隔离环境确认可以恢复。云端为空时仍保留本机记录。</p><label class="switch-row"><input id="cloudBackupConfirmed" type="checkbox"><span>已保存并验证完整备份</span></label><button id="cloudEnable" class="primary-button">启用自动同步</button></section>
+    <section id="cloudConflicts" hidden><h3>两端修改发生冲突</h3><p>未冲突记录会合并；以下冲突双方都已保留。选择前请先导出本机备份，云端原副本也保留在版本历史中。</p><ul id="cloudConflictList"></ul><button id="cloudConflictExport" class="text-button">导出双方完整冲突副本</button><div class="learning-actions"><button id="cloudKeepLocal" class="secondary-button">冲突采用本机版本</button><button id="cloudKeepRemote" class="secondary-button">冲突采用云端版本</button></div></section>
+    <p><button id="cloudBackup" class="text-button">学习数据备份与恢复</button> · <a href="docs/firebase-setup.md" target="_blank" rel="noopener">首次配置说明</a></p>
+  </dialog>
   <dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle"><div class="dialog-heading"><h2 id="settingsTitle">阅读设置</h2><button class="icon-button close-dialog" data-icon="x" aria-label="关闭阅读设置"></button></div><form method="dialog">
     <fieldset><legend>页面外观</legend><div class="theme-options"><label><input type="radio" name="theme" value="light"><span>浅色</span></label><label><input type="radio" name="theme" value="sepia"><span>护眼</span></label><label><input type="radio" name="theme" value="dark"><span>深色</span></label><label><input type="radio" name="theme" value="system"><span>跟随系统</span></label></div></fieldset>
     <label class="range-label" for="fontSize">正文字号 <output id="fontSizeValue">21 px</output></label><input id="fontSize" type="range" min="16" max="28" step="1" value="21">
@@ -92,8 +108,8 @@
     <label class="select-label" for="fontFamily">英文字体<select id="fontFamily"><option value="serif">衬线 · Georgia</option><option value="sans">无衬线 · 系统字体</option></select></label>
     <label class="switch-row"><span>强调目标词</span><input id="highlightWords" type="checkbox" checked></label>
     <div class="settings-footer"><button type="button" id="resetSettings" class="text-button">恢复默认设置</button><button class="primary-button" value="done">完成</button></div>
-  </form><p class="settings-note">设置、已读标记、义项卡和错句保存在当前浏览器中。</p></dialog>
-  <dialog id="aboutDialog" class="settings-dialog" aria-labelledby="aboutTitle"><div class="dialog-heading"><h2 id="aboutTitle">关于这份材料</h2><button class="icon-button close-dialog" data-icon="x" aria-label="关闭材料说明"></button></div><p>这份材料来自 2026 年 9 月 29 日导出的 1000 词词表，包含 25 篇原创语境短文，覆盖 999 词。文章是训练情境，非真实新闻报道。</p><p>英文正文、中文参考意译和词表义项均保留。点击目标词，查看已核查的本篇用义；在“本篇词汇”中切换到“全部 1000 词”，可搜索完整词表。</p><p><strong lang="en">desirability</strong> 因原词表的“愿望，欲求”释义存在歧义，未强行用于正文，仍保留在完整词表中。</p><p>阅读位置、已读标记和复习词保存在当前浏览器。更换设备、清除浏览器数据或使用无痕窗口时不会自动同步。</p><p>快捷键：Alt + ← / → 切换文章，Esc 关闭辅助窗口。</p></dialog>
+  </form><p class="settings-note">数据优先保存在本机，启用云同步后通过本人账号自动同步。</p></dialog>
+  <dialog id="aboutDialog" class="settings-dialog" aria-labelledby="aboutTitle"><div class="dialog-heading"><h2 id="aboutTitle">关于这份材料</h2><button class="icon-button close-dialog" data-icon="x" aria-label="关闭材料说明"></button></div><p>这份材料来自 2026 年 9 月 29 日导出的 1000 词词表，包含 25 篇原创语境短文，覆盖 999 词。文章是训练情境，非真实新闻报道。</p><p>英文正文、中文参考意译和词表义项均保留。点击目标词，查看已核查的本篇用义；在“本篇词汇”中切换到“全部 1000 词”，可搜索完整词表。</p><p><strong lang="en">desirability</strong> 因原词表的“愿望，欲求”释义存在歧义，未强行用于正文，仍保留在完整词表中。</p><p>阅读与学习记录优先保存在本机。配置并登录云同步后，同一 Google 账号可恢复全部个人记录；未登录时请使用 JSON 备份。</p><p>快捷键：Alt + ← / → 切换文章，Esc 关闭辅助窗口。</p></dialog>
   <dialog id="libraryDialog" class="settings-dialog library-dialog" aria-labelledby="libraryTitle">
     <div class="dialog-heading"><div><small class="field-label">READING LIBRARY</small><h2 id="libraryTitle">导入与资料</h2></div><button class="icon-button close-dialog" data-icon="x" aria-label="关闭导入与资料"></button></div>
     <button id="backupOpen" class="secondary-button">学习数据备份与恢复</button><p class="library-intro">把新的词表文章整理成一份资料包，后续添加内容无需修改网页代码。</p>
@@ -103,7 +119,7 @@
       <div id="importPreview" class="import-preview" aria-live="polite" hidden></div><button id="confirmImport" class="primary-button" disabled>确认导入到本机</button>
       <p id="storageStatus" class="import-notice" hidden></p>
     </section>
-    <section class="import-section" aria-labelledby="publishTitle"><h3 id="publishTitle">2. 在所有设备上阅读</h3><p>预览通过后，把同一 JSON 上传到 GitHub 的 <strong>packages</strong> 文件夹，再点击 <strong>Commit changes</strong>。发布完成后，新文章会自动加入网站。</p><div class="library-links"><a class="secondary-button" href="https://github.com/lin14159265/english-study/upload/main/packages" target="_blank" rel="noopener">去 GitHub 上传</a><a href="downloads/article-generation-prompt.txt" download>下载生成提示词</a><a href="downloads/pack-template.json" download>下载 JSON 示例</a></div><p class="settings-note">本机导入只保存在当前浏览器。GitHub 上传的资料会公开；阅读进度和复习词仍由各设备单独保存。</p></section>
+    <section class="import-section" aria-labelledby="publishTitle"><h3 id="publishTitle">2. 私人同步与公开发布</h3><p>私人资料请在“云同步”中登录本人账号，自动同步本机导入及修订。需要公开发布时，再将 JSON 上传至 GitHub 的 <strong>packages</strong> 文件夹。</p><div class="library-links"><a class="secondary-button" href="https://github.com/lin14159265/english-study/upload/main/packages" target="_blank" rel="noopener">去 GitHub 上传</a><a href="downloads/article-generation-prompt.txt" download>下载生成提示词</a><a href="downloads/pack-template.json" download>下载 JSON 示例</a></div><p class="settings-note">GitHub 上传的资料会公开。私人资料和学习记录只存本机及受本人账号保护的云端。</p></section>
     <section class="import-section" aria-labelledby="packageListTitle"><div class="manager-heading"><h3 id="packageListTitle">新增资料管理</h3><button id="refreshPublished" class="text-button">检查已发布资料</button></div><p id="publishedStatus" class="settings-note" role="status"></p><div id="packageList"></div></section>
   </dialog>
   <dialog id="backupDialog" class="settings-dialog library-dialog" aria-labelledby="backupTitle"><div class="dialog-heading"><h2 id="backupTitle">学习数据备份与恢复</h2><button class="icon-button close-dialog" data-icon="x" aria-label="关闭学习数据备份"></button></div><p class="settings-note">包含资料、阅读位置、义项卡、自测、错句、草稿和任务。下载文件可用于更换浏览器或设备。</p><div class="library-links"><button id="backupDownload" class="primary-button">下载完整学习备份</button><button id="backupSplit" class="secondary-button">下载分卷备份</button><button id="backupRollback" class="text-button">回退上次恢复</button></div><hr><label class="learning-label" for="backupFile">选择学习备份 JSON（单文件最多 100 MB；分卷合计最多 200 MB）</label><input id="backupFile" type="file" multiple accept=".json,application/json"><details class="paste-details"><summary>或粘贴备份 JSON</summary><textarea id="backupPaste" rows="5" aria-label="学习备份 JSON 文本"></textarea><button id="backupParse" class="secondary-button">检查学习备份</button></details><div class="vocabulary-tools"><label>恢复方式<select id="restoreMode"><option value="merge">合并到当前数据</option><option value="replace">完整替换</option></select></label><label>内容冲突时<select id="restorePreference"><option value="current">保留当前版本</option><option value="backup">使用备份版本</option><option value="copy">冲突资料保留独立副本</option></select></label></div><div id="restorePreview" class="import-preview" hidden></div><button id="restoreConfirm" class="primary-button" disabled>确认恢复预览中的数据</button><p id="backupStatus" class="learning-meta" role="status"></p></dialog>

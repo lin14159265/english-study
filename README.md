@@ -21,3 +21,7 @@
 ```sh
 node --test tests/*.test.cjs
 ```
+
+## 续读与完整云同步
+
+开发版加入稳定语义阅读锚点、继续阅读、Google 账号与 Firestore 的完整个人数据同步；本地 IndexedDB 与 JSON 备份仍为基础。未配置 Firebase 时阅读继续可用，不发送私人数据。配置与免费方案步骤见 [Firebase 启用说明](docs/firebase-setup.md)，兼容、冲突、隔离真机验收和回退边界见 [完整同步说明](docs/cloud-sync.md)。真实账号配置与真机验收完成前，不应将自动化测试结果当作正式云同步已上线。

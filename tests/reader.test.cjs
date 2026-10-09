@@ -5,14 +5,14 @@ function node(){const events={};return {events,value:'all',options:[],dataset:{}
 // Execute the actual reader with a minimal DOM, deterministic timers and storage.
 // This verifies orchestration, not actual browser layout/IndexedDB behaviour.
 async function reader(raw={},hash=''){
- const nodes={},listeners={},documentEvents={},writes=[],timers=new Map();let timerId=0,hooks,stored=clone(raw),learningReloads=0,workspaceReloads=0,experienceReloads=0,failWorkspace=false;
+ const nodes={},listeners={},documentEvents={},writes=[],timers=new Map();let timerId=0,hooks,stored=clone(raw),learningReloads=0,workspaceReloads=0,experienceReloads=0,failWorkspace=false,failSave=false,flushes=0,clock=0;
  const data={articles:Array.from({length:25},(_,i)=>article(i+1)),words:{}},makeUI=reload=>new Proxy({count:()=>0,reloadState:reload},{get:(t,k)=>t[k]||(()=>{})}),ui=makeUI(()=>learningReloads++);
  const library={open:async()=>data,entries:()=>[],attach:h=>hooks=h,reload:async()=>hooks.onChange({external:true})};
- const S={open:async()=>{},get:()=>clone(stored),set:(k,v)=>{stored=clone(v);writes.push(clone(v));return true;},flush:async()=>{},refresh:async()=>{},onReload:fn=>documentEvents['study-state-reloaded']=e=>fn(e.detail)};
- const context={window:null,document:{getElementById:id=>nodes[id]||(nodes[id]=node()),querySelector:()=>node(),querySelectorAll:()=>[],addEventListener:(n,f)=>documentEvents[n]=f,documentElement:{dataset:{},style:{setProperty(){}}},body:node()},StudyState:S,StudyLibrary:library,StudyLearning:{create:()=>ui},StudyWorkspace:{create:()=>makeUI(()=>{workspaceReloads++;if(failWorkspace)throw Error('workspace consumer failed');})},StudyExperience:{create:()=>makeUI(()=>experienceReloads++)},READING_DATA:data,location:{hash},history:{replaceState(_a,_b,h){context.location.hash=h;},pushState(_a,_b,h){context.location.hash=h;}},getComputedStyle:()=>({getPropertyValue:()=>''}),matchMedia:()=>({matches:false,addEventListener(){}}),innerWidth:1200,scrollY:0,requestAnimationFrame:fn=>context.setTimeout(fn,0),setTimeout:(fn,delay)=>{timers.set(++timerId,{fn,delay});return timerId;},clearTimeout:id=>timers.delete(id),addEventListener:(n,f)=>(listeners[n]??=[]).push(f),scrollTo(_x,y){context.scrollY=y;}};context.window=context;
+ const S={open:async()=>{},get:()=>clone(stored),set:(k,v)=>{if(failSave)throw Error('injected save failure');stored=clone(v);writes.push(clone(v));return true;},flush:async()=>{flushes++;},refresh:async()=>{},onReload:fn=>documentEvents['study-state-reloaded']=e=>fn(e.detail)};
+ const context={window:null,Date:{now:()=>clock},document:{getElementById:id=>nodes[id]||(nodes[id]=node()),querySelector:()=>node(),querySelectorAll:()=>[],addEventListener:(n,f)=>documentEvents[n]=f,documentElement:{dataset:{},style:{setProperty(){}}},body:node()},StudyState:S,StudyLibrary:library,StudyLearning:{create:()=>ui},StudyWorkspace:{create:()=>makeUI(()=>{workspaceReloads++;if(failWorkspace)throw Error('workspace consumer failed');})},StudyExperience:{create:()=>makeUI(()=>experienceReloads++)},READING_DATA:data,location:{hash},history:{replaceState(_a,_b,h){context.location.hash=h;},pushState(_a,_b,h){context.location.hash=h;}},getComputedStyle:()=>({getPropertyValue:()=>''}),matchMedia:()=>({matches:false,addEventListener(){}}),innerWidth:1200,scrollY:0,requestAnimationFrame:fn=>context.setTimeout(fn,0),setTimeout:(fn,delay)=>{timers.set(++timerId,{fn,delay});return timerId;},clearTimeout:id=>timers.delete(id),addEventListener:(n,f)=>(listeners[n]??=[]).push(f),scrollTo(_x,y){context.scrollY=y;listeners.scroll?.forEach(f=>f());}};context.window=context;
  function runTimers(limit=0){for(let count=0;count<100;count++){const entry=[...timers].find(([,t])=>t.delay<=limit);if(!entry)return;timers.delete(entry[0]);entry[1].fn();}throw Error('timer loop');}
  await vm.runInNewContext(fs.readFileSync(__dirname+'/../reader.js','utf8'),context);runTimers();
- return {context,nodes,data,writes,runTimers,emit:(event)=>listeners[event]?.forEach(f=>f()),saved:()=>clone(stored),change:fn=>{hooks.beforeChange();fn(data);hooks.onChange();runTimers();},remote:async raw=>{stored=clone(raw);await documentEvents['study-state-reloaded']({detail:{}});await Promise.resolve();runTimers();},learningReloads:()=>learningReloads,failWorkspace:v=>failWorkspace=v,workspaceReloads:()=>workspaceReloads,experienceReloads:()=>experienceReloads};
+ return {context,nodes,data,writes,runTimers,advance:n=>clock+=n,flushes:()=>flushes,emit:(event)=>listeners[event]?.forEach(f=>f()),documentEmit:event=>documentEvents[event]?.(),saved:()=>clone(stored),change:fn=>{hooks.beforeChange();fn(data);hooks.onChange();runTimers();},remote:async(raw,detail={})=>{stored=clone(raw);await documentEvents['study-state-reloaded']({detail});await Promise.resolve();runTimers();},learningReloads:()=>learningReloads,failWorkspace:v=>failWorkspace=v,failSave:v=>failSave=v,workspaceReloads:()=>workspaceReloads,experienceReloads:()=>experienceReloads};
 }
 const missing=()=>({currentKey:'late/story',readKeys:['original/7','late/story'],positionKeys:{'original/7':1321,'late/story':900},review:['late::word'],futureField:{preserve:true}});
 test('missing article keys, read marks, positions and unknown reader fields survive startup and fallback scroll',async()=>{
@@ -63,4 +63,31 @@ test('learning cache refresh uses the new legacy list instead of resurrecting re
 test('an actual reader reload consumer failure propagates and replay refreshes the consumers that were skipped',async()=>{
  const r=await reader({currentKey:'original/7',readKeys:[]}),next={currentKey:'original/2',readKeys:['original/2'],positionKeys:{'original/7':111}},before=r.writes.length;r.failWorkspace(true);
  await assert.rejects(r.remote(next),/workspace consumer failed/);assert.equal(r.experienceReloads(),0);r.failWorkspace(false);await r.remote(next);assert.equal(r.workspaceReloads(),2);assert.equal(r.experienceReloads(),1);assert.equal(r.writes.length,before);assert.equal(r.nodes.articleTitle.textContent,'Article 7');
+});
+test('a fresh root visit resumes the separate last-reading key after an explicit-link visit',async()=>{
+ const r=await reader({currentKey:'original/2',resumeKey:'original/7',positionKeys:{'original/2':120,'original/7':640}});assert.equal(r.nodes.articleTitle.textContent,'Article 7');assert.equal(r.context.scrollY,640);assert.equal(r.saved().currentKey,'original/7');
+});
+test('continue-reading entry returns from a fixed link and keeps both article positions',async()=>{
+ const r=await reader({currentKey:'original/7',resumeKey:'original/7',positionKeys:{'original/2':120,'original/7':640}},'#article-02');assert.equal(r.saved().resumeKey,'original/7');r.nodes.continueReading.events.click();r.runTimers();assert.equal(r.nodes.articleTitle.textContent,'Article 7');assert.equal(r.context.scrollY,640);assert.equal(r.saved().positionKeys['original/2'],120);assert.equal(r.saved().positionKeys['original/7'],640);
+});
+test('semantic anchors for missing and externally updated articles survive view projections',async()=>{
+ const anchors={'late/story':{version:1,paragraph:4,offset:80},'original/7':{version:1,paragraph:2,offset:30}},r=await reader({...missing(),anchorKeys:anchors});assert.deepEqual(r.saved().anchorKeys,anchors);r.context.scrollY=500;r.emit('scroll');r.runTimers(200);assert.deepEqual(r.saved().anchorKeys,anchors);
+ await r.remote({...missing(),anchorKeys:{...anchors,'late/story':{version:1,paragraph:6,offset:90}}});r.emit('pagehide');assert.equal(r.saved().anchorKeys['late/story'].offset,90);
+});
+test('continuous scrolling commits a bounded checkpoint and lifecycle hiding flushes latest position',async()=>{
+ const r=await reader({currentKey:'original/7'}),start=r.flushes();r.context.scrollY=400;for(let i=0;i<20;i++)r.emit('scroll');assert.equal(r.flushes(),start);
+ r.advance(5000);r.context.scrollY=600;r.emit('scroll');assert.equal(r.flushes(),start+1);assert.equal(r.saved().positionKeys['original/7'],600);
+ r.context.scrollY=700;r.context.document.visibilityState='hidden';r.documentEmit('visibilitychange');assert.equal(r.flushes(),start+2);assert.equal(r.saved().positionKeys['original/7'],700);
+});
+test('first cloud restore can adopt a remote resume without overwriting it with outgoing default-page position',async()=>{
+ const r=await reader({currentKey:'original/1'}),before=r.writes.length;r.context.scrollY=230;
+ await r.remote({currentKey:'original/7',resumeKey:'original/7',readKeys:['original/7'],positionKeys:{'original/7':800}},{followResume:true});assert.equal(r.writes.length,before);assert.equal(r.nodes.articleTitle.textContent,'Article 7');assert.equal(r.context.scrollY,800);assert.equal(r.saved().positionKeys['original/1'],undefined);
+});
+
+test('a rejected read-mark save reports failure and does not falsely toast success',async()=>{
+ const r=await reader({currentKey:'original/7',readKeys:[]}),before=r.flushes();r.failSave(true);await r.nodes.readButton.events.click();assert.equal(r.nodes.toast.textContent,'injected save failure');assert.equal(r.flushes(),before);assert.deepEqual(r.saved().readKeys,[]);r.failSave(false);await r.nodes.readButton.events.click();assert.deepEqual(r.saved().readKeys,['original/7']);assert.equal(r.nodes.toast.textContent,'本篇已标记为已读');
+});
+
+test('programmatic fixed-link restoration does not become a new last-reading checkpoint',async()=>{
+ const r=await reader({currentKey:'original/7',resumeKey:'original/7',positionKeys:{'original/2':450,'original/7':800}},'#article-02');r.runTimers(200);assert.equal(r.context.scrollY,450);assert.equal(r.saved().resumeKey,'original/7');assert.equal(r.saved().positionKeys['original/7'],800);
 });

@@ -57,3 +57,16 @@ test('original conflict copies keep removed cards and revision undo attached to 
  const r=C.restorePlan(a,b,'merge','copy').backup,id=r.packs.find(p=>p.id.startsWith('original-copy-')).id,removed=r.state.learning.trash[0].record;
  assert.equal(removed.wordKey,id+'::value');assert.equal(removed.articleKey,id+'/article-01');assert.ok(r.state.learning.attempts[removed.id]);assert.equal(r.state.extra.editUndo.sourceId,id);assert.equal(r.state.extra.editUndo.edit.payload.id,id);assert.equal(C.validateBackup(r).ok,true);
 });
+test('optional semantic anchors round trip version 1 and obey backup conflict choice',()=>{
+  const a=backup(),b=backup(),anchor={version:1,articleKey:'missing/story',contentVersion:'body-1',paragraph:3,offset:99,before:'before',after:'after',scrollY:550,viewportOffset:52,updatedAt:123};
+  b.state.reader.anchorKeys={'missing/story':anchor};const merged=C.restorePlan(a,b).backup;
+  assert.deepEqual(merged.state.reader.anchorKeys['missing/story'],anchor);assert.ok(C.parseBackup(JSON.stringify(merged)).ok);
+  a.state.reader.anchorKeys={'missing/story':{...anchor,offset:44}};
+  assert.equal(C.restorePlan(a,b,'merge','current').backup.state.reader.anchorKeys['missing/story'].offset,44);
+  assert.equal(C.restorePlan(a,b,'merge','backup').backup.state.reader.anchorKeys['missing/story'].offset,99);
+  b.state.reader.anchorKeys['missing/story'].articleKey='other';assert.equal(C.validateBackup(b).ok,false);
+});
+test('backup independent copies rewrite semantic anchor key and embedded article identity',()=>{
+  const a=backup(),b=backup();b.base.articles[0].zhTitle='修改';b.state.reader.anchorKeys={'original/1':{version:1,articleKey:'original/1',contentVersion:'v1',paragraph:0,offset:10,before:'a',after:'b',scrollY:300,viewportOffset:52,updatedAt:0}};
+  const copy=C.independentCopies(a,b),[key,anchor]=Object.entries(copy.state.reader.anchorKeys)[0];assert.match(key,/^original-copy-/);assert.equal(anchor.articleKey,key);assert.ok(C.validateBackup(copy).ok);
+});
