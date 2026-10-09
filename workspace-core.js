@@ -26,6 +26,7 @@
   function validateState(s){
     const errors=[];if(!object(s)||!object(s.reader)||!object(s.learning)||!object(s.extra))return ['备份缺少阅读、学习或扩展状态。'];
     const r=s.reader,l=s.learning;
+    if(r.resumeKey!==undefined&&typeof r.resumeKey!=='string')errors.push('续读文章键无效。');
     if(r.readKeys!==undefined&&(!Array.isArray(r.readKeys)||r.readKeys.some(k=>typeof k!=='string')))errors.push('已读文章键无效。');
     if(r.positionKeys!==undefined&&(!object(r.positionKeys)||Object.values(r.positionKeys).some(n=>!Number.isFinite(n)||n<0)))errors.push('阅读位置无效。');
     if(l.version!==1)errors.push('学习记录版本不支持。');
@@ -109,7 +110,7 @@
     for(const k of ['attempts','drafts','cursor'])a.learning[k]=mergeMap(a.learning[k],b.learning[k],prefer,conflicts,k);
     a.reader.readKeys=[...new Set([...(a.reader.readKeys||[]),...(b.reader.readKeys||[])])];
     a.reader.positionKeys=mergeMap(a.reader.positionKeys||{},b.reader.positionKeys||{},prefer,conflicts,'阅读位置');
-    if(prefer==='backup'){a.reader.settings=clone(b.reader.settings||{});a.reader.currentKey=b.reader.currentKey;a.learning.guessMode=b.learning.guessMode;}
+    if(prefer==='backup'){a.reader.settings=clone(b.reader.settings||{});a.reader.currentKey=b.reader.currentKey;a.reader.resumeKey=b.reader.resumeKey||b.reader.currentKey;a.learning.guessMode=b.learning.guessMode;}
     for(const k of ['difficulty','verifications'])a.extra[k]=mergeMap(a.extra[k]||{},b.extra[k]||{},prefer,conflicts,k);
     for(const k of ['pendingSentences','removedPending','lookupWords','reviewRounds'])a.extra[k]=mergeList(a.extra[k]||[],b.extra[k]||[],prefer,conflicts,k);
     for(const k of ['reviewSession','returnPoint','lastBackupAt'])if(b.extra[k]!==undefined&&(!a.extra[k]||prefer==='backup'))a.extra[k]=clone(b.extra[k]);
