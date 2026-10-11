@@ -6,6 +6,8 @@
   const $ = id => document.getElementById(id);
   const escape = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const icons = {
+    menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
+    more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     book:'<path d="M12 7c-2-2-6-3-10-2v14c4-1 8 0 10 2 2-2 6-3 10-2V5c-4-1-8 0-10 2Z"/><path d="M12 7v14"/>',
     focus:'<path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3M9 12h6m-3-3v6"/>',
     moon:'<path d="M20.8 13.4A9 9 0 0 1 10.6 3.2 9 9 0 1 0 20.8 13.4Z"/>',
@@ -59,7 +61,7 @@
   }
   projectRecords();
   let activeTab = 'reading', selectedWord = null, wordTrigger = null, scrollTimer, toastTimer, storageWarned = false, restoring = true;
-  let learning, workspace, experience, renderedKey, renderedVersion, lastCheckpoint=Date.now(), resizeTimer;
+  let learning, workspace, experience, layout, renderedKey, renderedVersion, lastCheckpoint=Date.now(), resizeTimer;
   const Position=window.StudyPositionCore;
   const current = () => data.articles[state.current - 1];
   const toast = text => { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 2500); };
@@ -94,7 +96,7 @@
   const flushReader=()=>{if(persist())StudyState.flush().catch(e=>toast(e.message||'保存失败，请重试。'));};
   const recordPosition = () => {
     // A temporary fallback must never acquire the missing article's saved position.
-    if (!restoring && activeTab === 'reading' && state.currentKey === current().key) {
+    if (!restoring && activeTab === 'reading' && state.currentKey === current().key && !$('sidebar').classList.contains('directory-open')) {
       state.positions[state.current] = state.positionKeys[state.currentKey] = Math.max(0,window.scrollY);
       const anchor=captureAnchor();if(anchor)state.anchorKeys[state.currentKey]=anchor;
       state.resumeKey = state.currentKey;
@@ -130,22 +132,24 @@
     $('articleList').innerHTML = articles.map(a => { const heading = batch==='all'&&lastBatch!==a.batch?`<p class="batch-heading">${escape(a.batchTitle)}</p>`:''; lastBatch=a.batch; return `${heading}<a href="${articleHash(a)}" data-article="${a.id}" ${a.id === state.current ? 'aria-current="page"' : ''}><span class="article-index">${state.read.includes(a.id) ? icon('check') : String(a.id).padStart(2,'0')}</span><span><span class="article-name" lang="en">${escape(a.title)}</span><span class="article-cn">${escape(a.zhTitle)}</span></span></a>`; }).join('') || '<p class="empty-state">没有匹配的文章</p>';
     $('readCount').textContent = `${state.read.length} / ${data.articles.length} 已读`;
   }
-  function closeWord(returnFocus = false) { const wasOpen = !$('wordPopover').hidden; $('wordPopover').hidden = true; selectedWord = null; if (returnFocus && wasOpen && wordTrigger?.isConnected) wordTrigger.focus(); }
+  function closeWord(returnFocus = false) { const wasOpen = !$('wordPopover').hidden; $('wordPopover').hidden = true; selectedWord = null; layout?.wordClosed(); if (returnFocus && wasOpen && wordTrigger?.isConnected) wordTrigger.focus(); }
   function closeDirectory(returnFocus = false) {
     const wasOpen = $('sidebar').classList.contains('directory-open');
     $('sidebar').classList.remove('directory-open'); $('sidebarBackdrop').hidden = true;
-    $('reader').inert = false; document.querySelector('.topbar').inert = false;
+    if(wasOpen){$('reader').inert = false; document.querySelector('.topbar').inert = false;}
     $('sidebar').removeAttribute('role'); $('sidebar').removeAttribute('aria-modal');
     document.body.style.overflow = '';
-    if (returnFocus && wasOpen) $('directoryButton').focus();
+    $('directoryButton').setAttribute('aria-expanded','false');
+    if (returnFocus && wasOpen) $('directoryButton').focus({preventScroll:true});
   }
   function openDirectory() {
-    if (innerWidth > 800 && !state.settings.focus) { $('articleSearch').focus(); return; }
+    if(scrollTimer){clearTimeout(scrollTimer);scrollTimer=null;if(recordPosition())flushReader();}
     closeWord(); $('sidebar').classList.add('directory-open'); $('sidebarBackdrop').hidden = false;
+    $('directoryButton').setAttribute('aria-expanded','true');
     $('sidebar').setAttribute('role','dialog'); $('sidebar').setAttribute('aria-modal','true');
     $('reader').inert = true; document.querySelector('.topbar').inert = true;
     document.body.style.overflow = 'hidden';
-    $('articleSearch').focus();
+    $('articleSearch').focus({preventScroll:true});
   }
   function updateNavigation() {
     document.querySelectorAll('.prev-button').forEach(b => b.disabled = state.current === 1);
@@ -170,6 +174,9 @@
     learning.articleChanged();
     workspace?.articleChanged();
     experience?.changed();
+    $('translateAll').setAttribute('aria-pressed','false');
+    $('translateAll').setAttribute('aria-label','展开全文译文');
+    layout?.refresh(true);
   }
   function restoreReadingPosition(position,anchor=state.anchorKeys[state.currentKey]) {
     restoring = true;
@@ -202,18 +209,21 @@
     restoreReadingPosition(id?state.positions[state.current]:0,id?state.anchorKeys[key]:null);
     if(!id)toast('续读文章尚未就绪，历史位置已保留。');
   }
-  window.StudyReaderAPI={checkpoint:()=>{recordPosition();if(!persist())return Promise.reject(Error('阅读记录尚未保存，请重试。'));return StudyState.flush();},continueReading,applyRemoteResume:()=>continueReading({remote:true})};
+  window.StudyReaderAPI={checkpoint:()=>{recordPosition();if(!persist())return Promise.reject(Error('阅读记录尚未保存，请重试。'));return StudyState.flush();},continueReading,closeDirectory,applyRemoteResume:()=>continueReading({remote:true})};
   function renderTabs() {
     ['reading','vocabulary','sentence','translation','review'].forEach(tab => {
       const selected = tab === activeTab;
       $(`panel-${tab}`).hidden = !selected;
       $(`tab-${tab}`).setAttribute('aria-selected',String(selected));
-      $(`tab-${tab}`).tabIndex = selected ? 0 : -1;
+      $(`tab-${tab}`).tabIndex = 0;
     });
     $('reviewCount').textContent = learning.count() || '';
+    layout?.tabChanged(activeTab);
   }
   function setTab(tab) {
-    if (!['reading','vocabulary','sentence','translation','review'].includes(tab) || activeTab === tab) return;
+    if (!['reading','vocabulary','sentence','translation','review'].includes(tab)) return;
+    if($('toolsDialog').open)$('toolsDialog').close();
+    if(activeTab === tab)return;
     recordPosition(); closeWord(); activeTab = tab;
     if (tab === 'review') renderReview();
     renderTabs(); flushReader();
@@ -268,6 +278,7 @@
     let top = rect.bottom+12;
     if (top+pop.offsetHeight>innerHeight-12) top = Math.max(70,rect.top-pop.offsetHeight-12);
     pop.style.left = `${left}px`; pop.style.top = `${top}px`;
+    layout?.wordOpened(u?.paragraph ?? Number(paragraph?.dataset.paragraph||0));
   }
   function jump(article, paragraph) {
     if (article !== state.current) setArticle(article,{position:0,paragraph});
@@ -297,6 +308,10 @@
     openReview:view=>{setTab('review');learning.setReviewView(view||'words');},refreshLearning:()=>{learning.reloadState();renderVocabulary();renderTabs();},isRead:()=>state.read.includes(state.current),
     completeAndNext:async()=>{const handled=await workspace.finishAndNext();if(!handled){markRead();await StudyState.flush();if(validId(state.current+1))setArticle(state.current+1,{position:0});else toast('已读到最后一篇，可继续复习或导入新资料。');}}
   });window.StudyExperienceAPI=experience;
+  layout=window.StudyReaderLayout?.create({data,current,toast,closeWord,showWord,
+    navigate:(key,p)=>{const id=idForKey(key);if(id)jump(id,p);},
+    openNote:s=>{learning.articleChanged(s.id);setTab('sentence');$('sentenceOwn').focus();}
+  });
   document.addEventListener('study-storage-warning',e=>toast(e.detail));
   paintIcons();
   $('articleSearch').addEventListener('input',renderDirectory);
@@ -304,11 +319,12 @@
   $('articleList').addEventListener('click',e=>{ const link=e.target.closest('[data-article]'); if (link) {e.preventDefault();setArticle(Number(link.dataset.article));} });
   $('directoryButton').addEventListener('click',openDirectory);
   $('continueReading')?.addEventListener('click',()=>continueReading());
+  $('backToReading')?.addEventListener('click',()=>setTab('reading'));
   $('closeDirectory').addEventListener('click',()=>closeDirectory(true));
   $('sidebarBackdrop').addEventListener('click',()=>closeDirectory(true));
   $('sidebar').addEventListener('keydown',e=>{
     if(e.key !== 'Tab' || !$('sidebar').classList.contains('directory-open')) return;
-    const items=[...$('sidebar').querySelectorAll('button,a,input')].filter(el=>el.offsetParent !== null);
+    const items=[...$('sidebar').querySelectorAll('button,a,input,select,summary')].filter(el=>el.offsetParent !== null&&!el.disabled);
     const first=items[0],last=items.at(-1);
     if(e.shiftKey && document.activeElement===first){e.preventDefault();last.focus();}
     else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first.focus();}
@@ -325,6 +341,7 @@
     setTab(tabs[n].dataset.tab);tabs[n].focus();
   });
   document.addEventListener('click',e=>{
+    if(e.target.closest('[data-margin-kind],[data-records-all]'))return;
     const target=e.target.closest('[data-word]');
     if(target){showWord(target.dataset.word,target);return;}
     const save=e.target.closest('[data-save]');
@@ -332,8 +349,24 @@
     const jumpButton=e.target.closest('[data-jump]');
     if(jumpButton){experience.origin(data.articles[Number(jumpButton.dataset.article)-1].key,Number(jumpButton.dataset.jump),{activity:'reading'});return;}
     const translate=e.target.closest('[data-translate]');
-    if(translate){const p=$(`inline-translation-${translate.dataset.translate}`);p.hidden=!p.hidden;translate.setAttribute('aria-expanded',String(!p.hidden));return;}
+    if(translate){changeTranslation(()=>{const p=$(`inline-translation-${translate.dataset.translate}`);p.hidden=!p.hidden;translate.setAttribute('aria-expanded',String(!p.hidden));translate.textContent=p.hidden?'译':'收起';});return;}
     if(!$('wordPopover').contains(e.target))closeWord();
+  });
+  function changeTranslation(change){
+    const anchor=captureAnchor(),position=window.scrollY;closeWord();change();
+    const all=[...document.querySelectorAll('.inline-translation')];
+    const expanded=all.length>0&&all.every(p=>!p.hidden);
+    $('translateAll').setAttribute('aria-pressed',String(expanded));
+    $('translateAll').setAttribute('aria-label',expanded?'收起全文译文':'展开全文译文');
+    layout?.schedule();restoreReadingPosition(position,anchor);
+  }
+  $('translateAll')?.addEventListener('click',()=>{
+    if(activeTab!=='reading'){setTab('reading');return;}
+    const show=$('translateAll').getAttribute('aria-pressed')!=='true';
+    changeTranslation(()=>document.querySelectorAll('[data-translate]').forEach(b=>{
+      $(`inline-translation-${b.dataset.translate}`).hidden=!show;
+      b.setAttribute('aria-expanded',String(show));b.textContent=show?'收起':'译';
+    }));
   });
   $('englishBody').addEventListener('keydown',e=>{
     const target=e.target.closest('.target');
@@ -346,12 +379,12 @@
   $('readButton').addEventListener('click',async()=>{const wasRead=state.read.includes(state.current),oldKeys=[...state.readKeys];state.readKeys=wasRead?state.readKeys.filter(key=>key!==current().key):[...state.readKeys,current().key];state.read=state.readKeys.map(idForKey).filter(Boolean);if(!persist()){state.readKeys=oldKeys;state.read=oldKeys.map(idForKey).filter(Boolean);return;}renderDirectory();updateNavigation();experience.changed();try{await StudyState.flush();toast(wasRead?'已取消已读标记':'本篇已标记为已读');}catch(e){toast(e.message);}});
   $('focusButton').addEventListener('click',()=>{closeDirectory();closeWord();changeLayout(()=>state.settings.focus=!state.settings.focus);});
   $('themeButton').addEventListener('click',()=>{state.settings.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';applySettings();persist();});
-  $('settingsButton').addEventListener('click',()=>{closeWord();applySettings();$('settingsDialog').showModal();});
+  $('settingsButton').addEventListener('click',()=>{closeWord();if($('toolsDialog').open)$('toolsDialog').close();applySettings();$('settingsDialog').showModal();});
   $('aboutButton').addEventListener('click',()=>{closeDirectory();$('aboutDialog').showModal();});
   document.querySelectorAll('.close-dialog').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
   document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}}));
   document.querySelectorAll('input[name=theme]').forEach(el=>el.addEventListener('change',()=>{state.settings.theme=el.value;applySettings();persist();}));
-  function changeLayout(change){recordPosition();const anchor=state.anchorKeys[state.currentKey],position=state.positions[state.current];change();applySettings();persist();if(activeTab==='reading')restoreReadingPosition(position,anchor);}
+  function changeLayout(change){recordPosition();const anchor=state.anchorKeys[state.currentKey],position=state.positions[state.current];change();applySettings();layout?.schedule();persist();if(activeTab==='reading')restoreReadingPosition(position,anchor);}
   ['fontSize','lineHeight'].forEach(id=>$(id).addEventListener('input',()=>changeLayout(()=>state.settings[id]=Number($(id).value))));
   $('fontFamily').addEventListener('change',()=>changeLayout(()=>state.settings.fontFamily=$('fontFamily').value));
   $('highlightWords').addEventListener('change',()=>{state.settings.highlight=$('highlightWords').checked;applySettings();persist();});
@@ -365,7 +398,7 @@
       if(e.key==='ArrowLeft'){e.preventDefault();setArticle(state.current-1);}
     }
   });
-  window.addEventListener('scroll',()=>{clearTimeout(scrollTimer);if(restoring)return;if(Date.now()-lastCheckpoint>=5000&&recordPosition())flushReader();scrollTimer=setTimeout(()=>{if(recordPosition())persist();},200);},{passive:true});
+  window.addEventListener('scroll',()=>{clearTimeout(scrollTimer);scrollTimer=null;if(restoring||$('sidebar').classList.contains('directory-open'))return;if(Date.now()-lastCheckpoint>=5000&&recordPosition())flushReader();scrollTimer=setTimeout(()=>{scrollTimer=null;if(recordPosition())persist();},200);},{passive:true});
   const lifecycleSave=()=>{clearTimeout(scrollTimer);if(recordPosition())flushReader();};
   window.addEventListener('pagehide',lifecycleSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')lifecycleSave();});
@@ -401,7 +434,7 @@
     state.resumeKey=next.resumeKey||next.currentKey||visibleKey;
     projectRecords();applySettings();learning.reloadState();
     if(detail.packs!==undefined)await StudyLibrary.reload(detail.packs,{token:detail.libraryToken});
-    renderDirectory();renderVocabulary();renderTabs();updateNavigation();updateContinue();workspace.reloadState();experience.reloadState();
+    renderDirectory();renderVocabulary();renderTabs();updateNavigation();updateContinue();workspace.reloadState();experience.reloadState();layout?.refresh(true);
     if(detail.followResume)continueReading({remote:true});
   });
   await StudyState.refresh();persist();

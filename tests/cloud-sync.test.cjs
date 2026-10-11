@@ -85,8 +85,9 @@ test('durable upload acknowledgement shows success before a second cloud pull',a
 test('a stalled pull reports its stage, never runs a concurrent cycle, and recovers on completion',async t=>{
  const s=store(fresh(),'owner'),b=backend(),adapter=b.adapter();let finish,pulls=0;
  adapter.pull=()=>{pulls++;return new Promise(resolve=>finish=resolve);};
- const {c}=await controller(s,{adapter:()=>adapter},{slowAfter:15});t.after(()=>c.close());
- const pending=c.syncNow();await new Promise(resolve=>setTimeout(resolve,25));
+ let now=0;
+ const {c}=await controller(s,{adapter:()=>adapter},{slowAfter:15,clock:()=>now});t.after(()=>c.close());
+ const pending=c.syncNow();await wait();await wait();now=20;c.wake();
  assert.equal(c.status().phase,'waiting');assert.equal(c.diagnostics().stage,'cloud-head');
  await c.syncNow();c.wake();assert.equal(pulls,1);assert.equal(c.diagnostics().running,true);
  finish({version:0,snapshot:null});await pending;assert.equal(c.diagnostics().running,false);assert.equal(c.status().phase,'synced');

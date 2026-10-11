@@ -47,7 +47,8 @@ const server=http.createServer(async(req,res)=>{
 let browser,origin;const checks=[],errors=[];let desktop,mobile,a,b;
 async function watch(p,label){p.on('pageerror',error=>errors.push({label,message:error.message}));}
 async function ready(p){await p.waitForFunction(()=>window.StudyReaderAPI&&window.StudyCloudAPI&&StudyState.status().phase==='saved');await p.waitForTimeout(150);}
-async function signIn(p){await p.locator('#cloudButton').click();await p.locator('#cloudLogin').click();}
+async function menuClick(p,id){if(await p.locator('#'+id).isHidden())await p.locator('#toolsButton').click();await p.locator('#'+id).click();}
+async function signIn(p){await menuClick(p,'cloudButton');await p.locator('#cloudLogin').click();}
 async function phase(p,name){await p.waitForFunction(name=>StudyCloudAPI.status().phase===name,name,{timeout:20000});}
 async function settle(p){for(let i=0;i<50;i++){await p.evaluate(()=>StudyCloudAPI.syncNow());const s=await p.evaluate(async()=>({phase:StudyCloudAPI.status().phase,record:await StudyState.readSync()}));if(s.phase==='synced'&&!s.record.pending.length&&!s.record.meta.flight)return s.record;if(['conflict','error','blocked','migration'].includes(s.phase)&&i>5)throw Error('Unexpected sync status '+s.phase+' '+await p.locator('#cloudState').textContent());await p.waitForTimeout(150);}throw Error('Sync did not settle: '+await p.locator('#cloudState').textContent());}
 async function test(name,run){const start=Date.now();try{await run();checks.push({name,pass:true,ms:Date.now()-start});console.log('PASS',name);}catch(error){checks.push({name,pass:false,error:error.message});throw error;}}
@@ -82,7 +83,7 @@ async function seed(p){await p.goto(origin+'/__qa/seed');await p.evaluate(async 
   await test('first migration requires backup acknowledgement and exports a complete valid personal JSON',async()=>{
     await signIn(a);await phase(a,'migration');assert.equal(cloud.version,0);await a.locator('#cloudEnable').click();assert.equal(cloud.version,0);assert.equal(await a.locator('#cloudMigration').isHidden(),false);
     await a.locator('#cloudBackup').click();const downloading=a.waitForEvent('download');await a.locator('#backupDownload').click();const download=await downloading,file=path.join(out,'synthetic-personal-backup.json');await download.saveAs(file);const backup=JSON.parse(fs.readFileSync(file));assert.equal(C.validateBackup(backup).ok,true);assert.equal(backup.packs.length,1);assert.equal(backup.state.learning.notes.length,1);assert.equal(backup.state.extra.quizAttempts.length,1);assert.equal(backup.state.extra.reviewRounds.length,1);
-    await a.locator('#backupDialog .close-dialog').click();await a.locator('#cloudButton').click();await a.locator('#cloudBackupConfirmed').check();await a.locator('#cloudEnable').click();await settle(a);assert.equal(cloud.snapshot.packs.length,1);assert.equal(cloud.snapshot.state.extra.edits['qa-private'].payload.articles[0].title,revised.articles[0].title);
+    await a.locator('#backupDialog .close-dialog').click();await menuClick(a,'cloudButton');await a.locator('#cloudBackupConfirmed').check();await a.locator('#cloudEnable').click();await settle(a);assert.equal(cloud.snapshot.packs.length,1);assert.equal(cloud.snapshot.state.extra.edits['qa-private'].payload.articles[0].title,revised.articles[0].title);
   });
   b=await mobile.newPage();await watch(b,'mobile viewport');await b.goto(origin+'/');await ready(b);
   await test('new independent browser login automatically restores all private packs, revisions, learning and resume',async()=>{
@@ -104,12 +105,12 @@ async function seed(p){await p.goto(origin+'/__qa/seed');await p.evaluate(async 
     if(await a.locator('#cloudDialog').evaluate(el=>el.open))await a.locator('#cloudDialog .close-dialog').click();await a.bringToFront();await settle(a);
     const before=await a.evaluate(()=>StudyState.readSync());
     await a.evaluate(()=>{let failed=false;window.__qaStopConsumer=StudyState.onReload(detail=>{if(detail.cloud&&!failed){failed=true;throw Error('injected cloud UI consumer failure');}});});
-    await mutate(b,'failed-refresh');await settle(b);
+    await a.locator('#directoryButton').click();await mutate(b,'failed-refresh');await settle(b);
     await a.waitForFunction(()=>document.querySelector('#reader').inert&&['error','loading'].includes(StudyState.status().phase),null,{timeout:20000});
     const failed=await a.evaluate(()=>StudyState.readSync());assert.notEqual(failed.token,before.token);assert.equal(failed.state.learning.drafts['consumer-recovery'].own,'durably committed before failed UI refresh');assert.equal(failed.meta.base.state.learning.drafts['consumer-recovery'].own,'durably committed before failed UI refresh');assert.equal(failed.meta.flight,undefined);
     assert.equal(await a.locator('#sidebar').evaluate(el=>el.inert),true);assert.equal(await a.locator('#syncApplyingNotice').isHidden(),false);assert.equal(await a.locator('#saveStatus').evaluate(el=>el.inert),false);assert.equal(await a.locator('#cloudButton').evaluate(el=>el.inert),false);
     const rejected=await a.evaluate(()=>{try{StudyState.set('learning',{...StudyState.get('learning'),testForbidden:true});return false;}catch{return true;}});assert.equal(rejected,true);
-    const box=await a.locator('#saveStatus').boundingBox();await a.mouse.click(box.x+box.width/2,box.y+box.height/2);assert.equal(await a.locator('#saveRetry').isHidden(),false);await a.locator('#saveRetry').click();
+    assert.equal(await a.locator('#sidebar').evaluate(el=>el.classList.contains('directory-open')),false);await menuClick(a,'saveStatus');assert.equal(await a.locator('#reader').evaluate(el=>el.inert),true);assert.equal(await a.locator('#saveRetry').isHidden(),false);await a.locator('#saveRetry').click();
     await a.waitForFunction(()=>StudyState.status().phase==='saved'&&!document.querySelector('#reader').inert);const recovered=await a.evaluate(()=>StudyState.readSync());assert.equal(recovered.token,failed.token);assert.deepEqual(recovered.state.learning.drafts['consumer-recovery'],failed.state.learning.drafts['consumer-recovery']);assert.equal(recovered.meta.flight,undefined);assert.equal(recovered.pending.length,failed.pending.length);assert.equal(await a.locator('#syncApplyingNotice').isHidden(),true);
     await a.evaluate(()=>window.__qaStopConsumer());await a.locator('#saveDialog .close-dialog').click();await settle(a);assert.equal((await a.evaluate(()=>StudyState.get('learning'))).drafts['consumer-recovery'].own,'durably committed before failed UI refresh');
   });
@@ -118,7 +119,7 @@ async function seed(p){await p.goto(origin+'/__qa/seed');await p.evaluate(async 
   });
   await test('concurrent private note conflicts survive reopening and an explicit choice restores consistent memory',async()=>{
     await desktop.setOffline(true);await mobile.setOffline(true);await mutate(a,'conflict-local');await mutate(b,'conflict-remote');await desktop.setOffline(false);await settle(a);await mobile.setOffline(false);await b.evaluate(()=>StudyCloudAPI.syncNow());await phase(b,'conflict');let record=await b.evaluate(()=>StudyState.readSync());assert.ok(record.meta.conflicts.length);assert.equal(record.state.learning.notes[0].own,'conflict-remote');
-    await b.reload();await ready(b);await phase(b,'conflict');record=await b.evaluate(()=>StudyState.readSync());assert.ok(record.meta.conflicts[0].result.conflicts.length);await b.locator('#cloudButton').click();await b.locator('#cloudKeepLocal').click();await settle(b);await settle(a);assert.equal((await a.evaluate(()=>StudyState.get('learning'))).notes[0].own,'conflict-remote');assert.equal((await b.evaluate(()=>StudyState.readSync())).meta.conflicts.length,0);await b.locator('#cloudDialog .close-dialog').click();
+    await b.reload();await ready(b);await phase(b,'conflict');record=await b.evaluate(()=>StudyState.readSync());assert.ok(record.meta.conflicts[0].result.conflicts.length);await menuClick(b,'cloudButton');await b.locator('#cloudKeepLocal').click();await settle(b);await settle(a);assert.equal((await a.evaluate(()=>StudyState.get('learning'))).notes[0].own,'conflict-remote');assert.equal((await b.evaluate(()=>StudyState.readSync())).meta.conflicts.length,0);await b.locator('#cloudDialog .close-dialog').click();
   });
   await test('a lost acknowledgement retries a persistent operation ID after reopening and a later cloud head',async()=>{
     cloud.loseAckFor=await a.evaluate(()=>window.__qaClient);await mutate(a,'unknown');await a.evaluate(()=>StudyCloudAPI.syncNow());await phase(a,'offline');const pending=await a.evaluate(()=>StudyState.readSync()),operation=pending.meta.flight.operationId,receipt=cloud.receipts.get(operation);assert.ok(receipt);await a.close();
@@ -145,7 +146,7 @@ async function seed(p){await p.goto(origin+'/__qa/seed');await p.evaluate(async 
     });
     await phase(a,'checking');assert.equal(await a.locator('#cloudStatus').textContent(),'已同步 · 检查更新');
     const before=await a.evaluate(()=>StudyState.readSync());
-    if(!await a.locator('#cloudDialog').evaluate(el=>el.open))await a.locator('#cloudButton').click();
+    if(!await a.locator('#cloudDialog').evaluate(el=>el.open))await menuClick(a,'cloudButton');
     await a.waitForFunction(()=>StudyCloudAPI.status().phase==='waiting',null,{timeout:30000});
     assert.equal(await a.locator('#cloudStatus').textContent(),'同步等待较久');assert.match(await a.locator('#cloudState').textContent(),/检查云端版本/);
     assert.equal(await a.locator('#reader').evaluate(el=>el.inert),false);await a.screenshot({path:path.join(out,'stalled-cloud-stage.png')});
