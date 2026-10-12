@@ -132,7 +132,7 @@
     $('articleList').innerHTML = articles.map(a => { const heading = batch==='all'&&lastBatch!==a.batch?`<p class="batch-heading">${escape(a.batchTitle)}</p>`:''; lastBatch=a.batch; return `${heading}<a href="${articleHash(a)}" data-article="${a.id}" ${a.id === state.current ? 'aria-current="page"' : ''}><span class="article-index">${state.read.includes(a.id) ? icon('check') : String(a.id).padStart(2,'0')}</span><span><span class="article-name" lang="en">${escape(a.title)}</span><span class="article-cn">${escape(a.zhTitle)}</span></span></a>`; }).join('') || '<p class="empty-state">没有匹配的文章</p>';
     $('readCount').textContent = `${state.read.length} / ${data.articles.length} 已读`;
   }
-  function closeWord(returnFocus = false) { const wasOpen = !$('wordPopover').hidden; $('wordPopover').hidden = true; selectedWord = null; layout?.wordClosed(); if (returnFocus && wasOpen && wordTrigger?.isConnected) wordTrigger.focus(); }
+  function closeWord(returnFocus = false) { const wasOpen = !$('wordPopover').hidden; $('wordPopover').hidden = true; selectedWord = null; layout?.wordClosed(); if (returnFocus && wasOpen && wordTrigger?.isConnected) wordTrigger.focus({preventScroll:true}); }
   function closeDirectory(returnFocus = false) {
     const wasOpen = $('sidebar').classList.contains('directory-open');
     $('sidebar').classList.remove('directory-open'); $('sidebarBackdrop').hidden = true;
@@ -149,7 +149,7 @@
     $('sidebar').setAttribute('role','dialog'); $('sidebar').setAttribute('aria-modal','true');
     $('reader').inert = true; document.querySelector('.topbar').inert = true;
     document.body.style.overflow = 'hidden';
-    $('articleSearch').focus({preventScroll:true});
+    (matchMedia('(pointer:coarse)').matches?$('closeDirectory'):$('articleSearch')).focus({preventScroll:true});
   }
   function updateNavigation() {
     document.querySelectorAll('.prev-button').forEach(b => b.disabled = state.current === 1);
@@ -278,7 +278,7 @@
     let top = rect.bottom+12;
     if (top+pop.offsetHeight>innerHeight-12) top = Math.max(70,rect.top-pop.offsetHeight-12);
     pop.style.left = `${left}px`; pop.style.top = `${top}px`;
-    layout?.wordOpened(u?.paragraph ?? Number(paragraph?.dataset.paragraph||0));
+    layout?.wordOpened(u?.paragraph ?? Number(paragraph?.dataset.paragraph||0),trigger);
   }
   function jump(article, paragraph) {
     if (article !== state.current) setArticle(article,{position:0,paragraph});
@@ -402,7 +402,13 @@
   const lifecycleSave=()=>{clearTimeout(scrollTimer);if(recordPosition())flushReader();};
   window.addEventListener('pagehide',lifecycleSave);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')lifecycleSave();});
-  window.addEventListener('resize',()=>{closeWord();if(innerWidth>800)closeDirectory();if(activeTab==='reading'&&state.anchorKeys[state.currentKey]){restoring=true;clearTimeout(scrollTimer);clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>restoreReadingPosition(state.positions[state.current]),120);}});
+  let readerWidth=innerWidth;
+  window.addEventListener('resize',()=>{
+    // Safari keyboard/address-bar changes do not reflow prose. Keep the active lookup.
+    if(Math.abs(innerWidth-readerWidth)<1){layout?.schedule();return;}
+    readerWidth=innerWidth;closeWord();if(innerWidth>800)closeDirectory();
+    if(activeTab==='reading'&&state.anchorKeys[state.currentKey]){restoring=true;clearTimeout(scrollTimer);clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>restoreReadingPosition(state.positions[state.current]),120);}
+  });
   function hashArticle() { if(location.hash.startsWith('#read=')){try{return idForKey(decodeURIComponent(location.hash.slice(6)))||null;}catch{return null;}} const match=location.hash.match(/^#(?:article-|en-|zh-)(\d+)$/);return match&&validId(Number(match[1]))?Number(match[1]):null; }
   function pendingHashKey() {if(location.hash.startsWith('#read=')){try{return decodeURIComponent(location.hash.slice(6))||null;}catch{return null;}}return null;}
   function followHash() { const id=hashArticle();if(id){setArticle(id,{push:false,resume:false});if(location.hash.startsWith('#zh-'))setTab('translation');}else if(pendingHashKey()){recordPosition();state.currentKey=pendingHashKey();activeTab='reading';projectRecords();renderArticle();renderTabs();persist();restoreReadingPosition(0,null);toast('目标文章尚未就绪，已保留原记录；资料加载后再打开。');} }

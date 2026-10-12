@@ -141,6 +141,57 @@
   .reader-v2 .topbar-actions>button{padding:0 11px}
   .reader-v2 .reading-column{padding-left:24px;padding-right:24px}
 }
+/* Device refinement: rails belong to the book, not the outer monitor edges. */
+:root{--reader-rails:1;--reader-header-height:70px;--reader-safe-left:env(safe-area-inset-left,0px);--reader-safe-right:env(safe-area-inset-right,0px);--reader-safe-bottom:env(safe-area-inset-bottom,0px);--paper-width:min(var(--page-width),calc(var(--font-size) * 34 + 112px),calc(100vw - 560px))}
+.reader-v2 .topbar{height:calc(var(--reader-header-height) + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);padding-left:max(40px,env(safe-area-inset-left));padding-right:max(40px,env(safe-area-inset-right))}
+.reader-v2 .reading-column{width:var(--paper-width);padding-top:clamp(80px,7.5vw,128px);padding-bottom:max(80px,env(safe-area-inset-bottom));min-height:calc(100dvh - var(--reader-header-height) - env(safe-area-inset-top))}
+.reader-v2 h1{overflow-wrap:break-word;text-wrap:balance}
+.reader-v2 .english-body{overflow-wrap:break-word}
+.reader-v2 .paragraph{margin-bottom:clamp(32px,2.6vw,48px)}
+.reader-v2 .margin-left{left:auto;right:calc(50% + var(--paper-width) / 2 + 36px)}
+.reader-v2 .margin-right{right:auto;left:calc(50% + var(--paper-width) / 2 + 36px)}
+.reader-v2 .sidebar{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+.reader-v2 .reading-save-notice{top:calc(var(--reader-header-height) + env(safe-area-inset-top))}
+.reader-v2 .inline-translation{line-height:1.95;overflow-wrap:anywhere}
+.reader-v2 .paragraph-translate[aria-expanded=true]{color:var(--text)}
+.reader-v2.word-overlay .word-popover{left:var(--word-left,12px)!important;top:var(--word-top,80px)!important;right:auto!important;bottom:auto!important;width:var(--word-width,360px);max-width:calc(100vw - 24px);max-height:var(--word-max-height,60dvh);overflow:auto;overscroll-behavior:contain}
+.reader-v2.word-overlay .word-context{max-height:90px;margin:12px 0;line-height:1.65}
+.reader-v2 .settings-dialog{max-height:calc(var(--visual-height,100dvh) - 40px)}
+@media(max-width:1319px){
+  :root{--reader-rails:0;--reader-header-height:64px;--paper-width:min(880px,calc(var(--font-size) * 34 + 96px),calc(100vw - 64px))}
+  .reader-v2 .topbar{padding-left:max(24px,env(safe-area-inset-left));padding-right:max(24px,env(safe-area-inset-right))}
+  .reader-v2 .reading-column,.reader-v2.focus-mode .reading-column{width:var(--paper-width);padding:72px 48px 64px}
+  .reader-v2 h1{font-size:44px;line-height:1.16;margin-bottom:38px}
+  .reader-v2 .paragraph-translate{left:calc(100% + 8px)}
+}
+@media(min-width:601px) and (max-width:800px){
+  .reader-v2 .mobile-brand{font-size:22px}
+  .reader-v2 .topbar-actions>button{font-size:16px}
+  .reader-v2 .reading-column,.reader-v2.focus-mode .reading-column{padding:64px 40px 56px}
+  .reader-v2 .paragraph-translate{position:absolute;margin:0;background:transparent;border-radius:0}
+}
+@media(max-width:600px){
+  :root{--reader-header-height:58px}
+  .reader-v2 .topbar{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}
+  .reader-v2 .reading-column,.reader-v2.focus-mode .reading-column{width:100%;padding:40px max(24px,env(safe-area-inset-right)) max(56px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left))}
+  .reader-v2 h1{font-size:32px;line-height:1.2;margin-bottom:30px}
+  .reader-v2 .paragraph{margin-bottom:34px}
+  .reader-v2 #toolsButton{min-width:44px}
+}
+@media(pointer:coarse){
+  .reader-v2 input:not([type=range]):not([type=checkbox]):not([type=radio]),.reader-v2 textarea,.reader-v2 select{font-size:16px}
+  .reader-v2 .icon-button,.reader-v2 .word-popover #closeWord{min-width:44px;min-height:44px}
+  .reader-v2 .paragraph-translate{min-width:44px;min-height:44px}
+  .reader-v2 .settings-dialog{position:fixed;top:calc(var(--visual-top,0px) + max(16px,env(safe-area-inset-top)));margin:0 auto;max-height:calc(var(--visual-height,100dvh) - 40px - env(safe-area-inset-bottom))}
+}
+@media(pointer:coarse) and (max-width:1100px) and (max-height:600px){
+  :root{--reader-header-height:58px}
+  .reader-v2 .topbar{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+  .reader-v2 .reading-column,.reader-v2.focus-mode .reading-column{padding-top:32px;padding-bottom:max(40px,env(safe-area-inset-bottom))}
+  .reader-v2 h1{font-size:34px;margin-bottom:26px}
+  .reader-v2.word-overlay .word-popover{padding:14px 18px}
+}
+@media(prefers-reduced-motion:reduce){.reader-v2 .sidebar{transition:none}}
 @media print{
   .reader-v2 .margin-left,.reader-v2 .margin-right,.reader-v2 #backToReading,.reader-v2 .reading-end,.reader-v2 .reading-save-notice,.reader-v2 #activeTask{display:none!important}
   .reader-v2 .reading-column{width:100%;padding:0;background:white;min-height:0}

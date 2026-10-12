@@ -19,5 +19,26 @@
     const quote=record.en||record.context;
     return typeof quote==='string'&&quote.length&&article.plain?.[record.paragraph]?.includes(quote)?record.paragraph:null;
   }
-  return {records,annotationLocation};
+  function nearbyCards(article,cards,paragraph,limit=5){
+    return list(cards).filter(r=>r.articleKey===article?.key).map((record,index)=>({record,index,p:annotationLocation(article,record)}))
+      .sort((a,b)=>{
+        const rank=x=>Number.isInteger(paragraph)&&x.p!==null&&Math.abs(x.p-paragraph)<=1?Math.abs(x.p-paragraph):Infinity;
+        const ar=rank(a),br=rank(b);return ar===br?b.index-a.index:ar<br?-1:1;
+      }).slice(0,limit).map(x=>x.record);
+  }
+  // Visual viewport coordinates are CSS pixels, independent of panel DPI or device name.
+  function overlayPlacement({viewport,rect,width,header=70,insets={}}){
+    const v=viewport,edge=12,safe=k=>Math.max(edge,Number(insets[k])||0),leftEdge=v.left+safe('left'),rightEdge=v.left+v.width-safe('right');
+    const topEdge=v.top+header+edge,bottomEdge=v.top+v.height-safe('bottom'),available=Math.max(48,bottomEdge-topEdge);
+    const r=rect||{left:leftEdge,top:topEdge,bottom:topEdge};
+    const below=Math.max(0,bottomEdge-Math.max(topEdge,r.bottom+edge));
+    const above=Math.max(0,Math.min(bottomEdge,r.top-edge)-topEdge);
+    const lower=below>=Math.min(200,available*.45)||below>=above;
+    const height=Math.min(available,Math.max(96,Math.min(available*.62,lower?below:above)));
+    const panelWidth=Math.min(width,Math.max(24,rightEdge-leftEdge));
+    const left=Math.max(leftEdge,Math.min(rightEdge-panelWidth,r.left));
+    const top=Math.max(topEdge,Math.min(bottomEdge-height,lower?r.bottom+edge:r.top-edge-height));
+    return {left,top,width:panelWidth,maxHeight:height};
+  }
+  return {records,annotationLocation,nearbyCards,overlayPlacement};
 });

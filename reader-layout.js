@@ -4,7 +4,7 @@
   const $=id=>document.getElementById(id),C=root.StudyReaderLayoutCore,esc=s=>root.StudyPack.escape(s??'');
   function create(app){
     const {current,data,toast}=app,S=root.StudyState,L=root.StudyLearningCore;
-    let rows={cards:[],waiting:[],annotations:[]},lastLearning,lastExtra,lastKey,lastVersion,frame,selectedParagraph=null,projectionError='';
+    let rows={cards:[],waiting:[],annotations:[]},lastLearning,lastExtra,lastKey,lastVersion,frame,selectedParagraph=null,wordTrigger=null,readingParagraph=0,scrollIdle,projectionError='';
     const pop=$('wordPopover'),reading=$('panel-reading'),reader=$('reader');
     reader.insertAdjacentHTML('beforeend','<aside id="marginLeft" class="margin-left" aria-label="本篇学习记录"></aside><aside id="marginRight" class="margin-right" aria-label="用义与个人批注"><div id="wordDock"></div><div id="marginNotes"></div></aside>');
     document.body.insertAdjacentHTML('beforeend','<dialog id="articleRecordsDialog" class="settings-dialog workspace-dialog" aria-labelledby="articleRecordsTitle"><div class="dialog-heading"><h2 id="articleRecordsTitle">本篇学习记录</h2><button class="icon-button close-dialog" aria-label="关闭本篇学习记录">×</button></div><div id="articleRecordsBody"></div></dialog>');
@@ -45,7 +45,7 @@
     }
     function renderLeft(){
       const parts=[];
-      if(rows.cards.length)parts.push(`<section class="margin-section"><h2>本篇生词</h2>${rows.cards.slice(-5).reverse().map(r=>sourceLink('card',r)).join('')}${rows.cards.length>5?'<button class="text-button" data-records-all>查看全部</button>':''}</section>`);
+      if(rows.cards.length)parts.push(`<section class="margin-section"><h2>本篇生词</h2>${C.nearbyCards(current(),rows.cards,readingParagraph).map(r=>sourceLink('card',r)).join('')}${rows.cards.length>5?'<button class="text-button" data-records-all>查看全部</button>':''}</section>`);
       if(rows.waiting.length)parts.push(`<section class="margin-section"><h2>待回看</h2>${rows.waiting.slice(-3).reverse().map(({kind,record})=>sourceLink(kind,record)).join('')}${rows.waiting.length>3?'<button class="text-button" data-records-all>查看全部</button>':''}</section>`);
       $('marginLeft').innerHTML=parts.join('');$('marginLeft').hidden=!parts.length||reading.hidden;
     }
@@ -65,16 +65,28 @@
     function refresh(force=false){
       const learning=S.get('learning',{}),extra=S.get('extra',{}),a=current();
       if(!force&&learning===lastLearning&&extra===lastExtra&&a.key===lastKey&&a.sourceSignature===lastVersion)return;
+      if(a.key!==lastKey)readingParagraph=0;
       rows=C.records(a.key,learning,extra);lastLearning=learning;lastExtra=extra;lastKey=a.key;lastVersion=a.sourceSignature;
       renderLeft();renderNotes();if($('articleRecordsDialog').open)renderRecords();
     }
     function layout(){
       frame=null;
-      const wide=innerWidth>=1320&&!reading.hidden&&!document.body.classList.contains('focus-mode'),bodyTop=reader.getBoundingClientRect().top+scrollY;
+      const wide=getComputedStyle(reader).getPropertyValue('--reader-rails').trim()==='1'&&!reading.hidden&&!document.body.classList.contains('focus-mode'),bodyTop=reader.getBoundingClientRect().top+scrollY;
       document.body.classList.toggle('word-docked',wide);
+      document.body.classList.toggle('word-overlay',!wide);
       if(wide){if(pop.parentElement!==$('wordDock'))$('wordDock').append(pop);}
       else if(pop.parentElement!==document.body)document.body.append(pop);
-      if(!wide||reading.hidden){reader.style.minHeight='';return;}
+      if(!wide||reading.hidden){
+        reader.style.minHeight='';
+        if(!pop.hidden){
+          const v=root.visualViewport,viewport={left:v?.offsetLeft||0,top:v?.offsetTop||0,width:v?.width||innerWidth,height:v?.height||innerHeight};
+          const header=Math.max(0,document.querySelector('.topbar').getBoundingClientRect().bottom-viewport.top);
+          const css=getComputedStyle(document.documentElement),insets=Object.fromEntries(['left','right','bottom'].map(k=>[k,parseFloat(css.getPropertyValue('--reader-safe-'+k))||0]));
+          const placement=C.overlayPlacement({viewport,rect:wordTrigger?.isConnected?wordTrigger.getBoundingClientRect():null,width:viewport.width<=600?viewport.width-24:360,header,insets});
+          for(const [name,value] of Object.entries(placement))pop.style.setProperty('--word-'+name.replace(/[A-Z]/g,c=>'-'+c.toLowerCase()),value+'px');
+        }
+        return;
+      }
       let occupied=0;
       if(!pop.hidden){
         const paragraph=$(`paragraph-${selectedParagraph}`),top=Math.max(110,(paragraph?.getBoundingClientRect().top||bodyTop+250)+scrollY-bodyTop-55);
@@ -90,7 +102,7 @@
       reader.style.minHeight=`${Math.max(base,occupied+48)}px`;
     }
     function schedule(){if(!frame)frame=requestAnimationFrame(layout);}
-    function wordOpened(paragraph){selectedParagraph=paragraph;pop.querySelector('.word-details').open=false;layout();}
+    function wordOpened(paragraph,trigger){selectedParagraph=paragraph;wordTrigger=trigger;pop.querySelector('.word-details').open=false;layout();}
     function wordClosed(){schedule();}
     function tabChanged(tab){
       document.body.dataset.readingView=tab;$('backToReading').hidden=tab==='reading';
@@ -130,6 +142,20 @@
     if(root.ResizeObserver){const observer=new ResizeObserver(schedule);observer.observe(document.querySelector('.reading-column'));observer.observe(pop);}
     pop.addEventListener('toggle',schedule,true);$('marginNotes').addEventListener('toggle',schedule,true);
     window.addEventListener('resize',()=>{reader.style.minHeight='';schedule();});
+    function viewportChanged(){
+      const v=root.visualViewport,style=document.documentElement.style;
+      style.setProperty('--visual-height',(v?.height||innerHeight)+'px');style.setProperty('--visual-top',(v?.offsetTop||0)+'px');schedule();
+    }
+    root.visualViewport?.addEventListener('resize',viewportChanged);root.visualViewport?.addEventListener('scroll',viewportChanged);viewportChanged();
+    window.addEventListener('scroll',()=>{
+      clearTimeout(scrollIdle);if(reading.hidden||!document.body.classList.contains('word-docked'))return;
+      scrollIdle=setTimeout(()=>{
+        const top=document.querySelector('.topbar').getBoundingClientRect().bottom+14;
+        const next=[...$('englishBody').querySelectorAll('.paragraph')].find(p=>p.querySelector('p').getBoundingClientRect().bottom>top);
+        const p=Number(next?.dataset.paragraph);if(!Number.isInteger(p)||p===readingParagraph)return;
+        readingParagraph=p;try{renderLeft();}catch(e){projectionError=e.message||'页边记录未能刷新';status();}
+      },260);
+    },{passive:true});
     refresh(true);status();return {refresh,wordOpened,wordClosed,tabChanged,schedule,openRecords};
   }
   root.StudyReaderLayout={create};
