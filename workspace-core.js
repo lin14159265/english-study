@@ -26,8 +26,10 @@
   function validateState(s){
     const errors=[];if(!object(s)||!object(s.reader)||!object(s.learning)||!object(s.extra))return ['备份缺少阅读、学习或扩展状态。'];
     const r=s.reader,l=s.learning;
+    if(r.resumeKey!==undefined&&typeof r.resumeKey!=='string')errors.push('续读文章键无效。');
     if(r.readKeys!==undefined&&(!Array.isArray(r.readKeys)||r.readKeys.some(k=>typeof k!=='string')))errors.push('已读文章键无效。');
     if(r.positionKeys!==undefined&&(!object(r.positionKeys)||Object.values(r.positionKeys).some(n=>!Number.isFinite(n)||n<0)))errors.push('阅读位置无效。');
+    if(r.anchorKeys!==undefined&&(!object(r.anchorKeys)||Object.entries(r.anchorKeys).some(([key,a])=>!object(a)||a.version!==1||a.articleKey!==key||typeof a.contentVersion!=='string'||!Number.isInteger(a.paragraph)||a.paragraph<0||!Number.isInteger(a.offset)||a.offset<0||typeof a.before!=='string'||typeof a.after!=='string'||a.before.length>500||a.after.length>500||!Number.isFinite(a.scrollY)||a.scrollY<0||!Number.isFinite(a.viewportOffset)||!Number.isFinite(a.updatedAt))))errors.push('语义阅读位置无效。');
     if(l.version!==1)errors.push('学习记录版本不支持。');
     const loaded=L.load(l);
     for(const k of ['cards','notes','migrated','trash'])if(!Array.isArray(l[k])||loaded[k].length!==l[k].length)errors.push(`学习记录 ${k} 无效。`);
@@ -109,7 +111,8 @@
     for(const k of ['attempts','drafts','cursor'])a.learning[k]=mergeMap(a.learning[k],b.learning[k],prefer,conflicts,k);
     a.reader.readKeys=[...new Set([...(a.reader.readKeys||[]),...(b.reader.readKeys||[])])];
     a.reader.positionKeys=mergeMap(a.reader.positionKeys||{},b.reader.positionKeys||{},prefer,conflicts,'阅读位置');
-    if(prefer==='backup'){a.reader.settings=clone(b.reader.settings||{});a.reader.currentKey=b.reader.currentKey;a.learning.guessMode=b.learning.guessMode;}
+    if(a.reader.anchorKeys!==undefined||b.reader.anchorKeys!==undefined)a.reader.anchorKeys=mergeMap(a.reader.anchorKeys||{},b.reader.anchorKeys||{},prefer,conflicts,'语义阅读位置');
+    if(prefer==='backup'){a.reader.settings=clone(b.reader.settings||{});a.reader.currentKey=b.reader.currentKey;a.reader.resumeKey=b.reader.resumeKey||b.reader.currentKey;a.learning.guessMode=b.learning.guessMode;}
     for(const k of ['difficulty','verifications'])a.extra[k]=mergeMap(a.extra[k]||{},b.extra[k]||{},prefer,conflicts,k);
     for(const k of ['pendingSentences','removedPending','lookupWords','reviewRounds'])a.extra[k]=mergeList(a.extra[k]||[],b.extra[k]||[],prefer,conflicts,k);
     for(const k of ['reviewSession','returnPoint','lastBackupAt'])if(b.extra[k]!==undefined&&(!a.extra[k]||prefer==='backup'))a.extra[k]=clone(b.extra[k]);

@@ -5,3 +5,11 @@
 
 .study-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:16px 0 22px}.study-shortcuts button{min-height:44px;margin:0;white-space:normal;font-size:13px;padding:9px 12px}.study-shortcuts .text-button{border:1px solid var(--border);border-radius:8px;background:var(--surface)}
 @media(max-width:600px){.paragraph-translate{min-height:44px;min-width:36px}}
+
+/* Sync feedback stays outside the text flow and recovery remains accessible. */
+.sync-applying-notice{position:fixed;bottom:12px;left:12px;right:12px;z-index:90;margin:0;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)}
+#cloudButton{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+#cloudDialog .learning-actions{flex-wrap:wrap}
+#cloudUid{overflow-wrap:anywhere}
+#cloudConflictList{overflow-wrap:anywhere}
+#cloudConflictList details p{white-space:pre-wrap;font-size:13px}
