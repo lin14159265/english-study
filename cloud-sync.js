@@ -176,9 +176,10 @@ if(typeof window!=='undefined'&&window.StudyCloudSync){
     if(!dialog||!S||!C)return;
     document.addEventListener('study-sync-applying',event=>{
       const active=event.detail.active;
-      for(const el of document.querySelectorAll('#sidebar,#reader,dialog:not(#saveDialog):not(#cloudDialog):not(#backupDialog)'))el.inert=active;
+      if(active)window.StudyReaderAPI?.closeDirectory();
+      for(const el of document.querySelectorAll('#sidebar,#reader,dialog:not(#saveDialog):not(#cloudDialog):not(#backupDialog):not(#toolsDialog)'))el.inert=active;
       for(const el of document.querySelectorAll('#backupDialog input,#backupDialog textarea,#backupDialog select,#backupDialog button:not(.close-dialog):not(#backupDownload):not(#backupSplit)'))el.inert=active;
-      for(const el of document.querySelectorAll('.topbar button:not(#saveStatus):not(#cloudButton)'))el.inert=active;
+      for(const el of document.querySelectorAll('.topbar button:not(#saveStatus):not(#cloudButton):not(#toolsButton),#toolsDialog button:not(#saveStatus):not(#cloudButton)'))el.inert=active;
       const notice=$('syncApplyingNotice');if(notice){notice.hidden=!active;notice.textContent=event.detail.pendingReload?'页面刷新未完成，请打开保存状态重试。':'正在应用已合并记录，请稍候…';}
     });
     let controller=null,adapter=null,loading=null,bootRetryTimer=null,bootFailures=0,lastStatus={phase:'configuration',message:'尚未配置云同步；本机阅读与 JSON 备份可用。'};

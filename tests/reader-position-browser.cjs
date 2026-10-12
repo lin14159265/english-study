@@ -23,7 +23,7 @@ async function rect(p,anchor){return p.evaluate(a=>{
   const context=await browser.newContext({viewport:{width:1365,height:900},serviceWorkers:'block'}),p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));
   let anchor;
   await test('real rendered character is captured with a stable key and text context',async()=>{
-    await p.goto(origin+'/#article-07');await ready(p);await p.evaluate(()=>scrollTo(0,820));
+    await p.goto(origin+'/#article-07');await ready(p);await p.evaluate(()=>{const rect=document.querySelector('#paragraph-1 > p').getBoundingClientRect();scrollTo(0,rect.top+scrollY+rect.height/3);});
     await p.waitForFunction(()=>StudyState.get('reader').anchorKeys?.['original/7']?.scrollY>500&&StudyState.status().phase==='saved');
     anchor=await p.evaluate(()=>StudyState.get('reader').anchorKeys['original/7']);assert.ok(anchor.offset>0);assert.equal(anchor.articleKey,'original/7');assert.ok(anchor.before.length+anchor.after.length>10);
   });
@@ -41,7 +41,7 @@ async function rect(p,anchor){return p.evaluate(a=>{
     await p.evaluate(async()=>{const r=StudyState.get('reader');StudyState.set('reader',{...r,resumeKey:'original/7',positionKeys:{...r.positionKeys,'original/2':320}});await StudyState.flush();const pending=[];document.dispatchEvent(new CustomEvent('study-state-reloaded',{detail:{waitUntil:task=>pending.push(task)}}));await Promise.all(pending);});
     await p.goto(origin+'/#article-02');await ready(p);await p.waitForTimeout(300);
     let r=await p.evaluate(()=>StudyState.get('reader'));assert.equal(r.currentKey,'original/2');assert.equal(r.resumeKey,'original/7');assert.equal(r.positionKeys['original/2'],320);
-    assert.equal(await p.locator('#continueReading').isHidden(),false);await p.evaluate(()=>document.querySelector('#continueReading').click());await ready(p);
+    await p.locator('#directoryButton').click();assert.equal(await p.locator('#continueReading').isHidden(),false);await p.locator('#continueReading').click();await ready(p);
     r=await p.evaluate(()=>StudyState.get('reader'));assert.equal(r.currentKey,'original/7');assert.equal(r.positionKeys['original/2'],320);const actual=await rect(p,anchor);assert.ok(Math.abs(actual.top-anchor.viewportOffset)<40,JSON.stringify({anchor,actual}));
   });
   assert.deepEqual(errors,[]);await context.close();

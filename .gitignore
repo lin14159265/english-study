@@ -1,0 +1,4 @@
+.reader-v2-preview/
+.firebase/
+firestore-debug.log
+firebase-debug.log
