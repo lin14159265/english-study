@@ -12,7 +12,7 @@
 .reader-v2 #settingsButton{width:auto;font:28px/1 Georgia,serif}
 .reader-v2 #settingsButton{order:1}
 .reader-v2 #toolsButton{order:2}
-.reader-v2 #toolsButton{width:64px;padding-right:0}
+.reader-v2 #toolsButton{width:64px;padding:0}
 .reader-v2 #toolsButton svg{width:26px}
 .reader-v2 #reader{margin:0;padding:0;position:relative;min-height:calc(100dvh - 70px)}
 .reader-v2 .reading-column{width:min(var(--page-width),calc(100% - 560px));max-width:none;margin:auto;padding:128px 56px 80px;min-height:calc(100dvh - 70px);background:var(--surface)}
@@ -117,7 +117,7 @@
   .reader-v2 .mobile-brand{padding-left:12px;font-size:18px}
   .reader-v2 .topbar-actions>button{padding:0 14px;font-size:14px}
   .reader-v2 #settingsButton{font-size:22px}
-  .reader-v2 #toolsButton{width:38px;padding:0 0 0 10px}
+  .reader-v2 #toolsButton{width:38px;padding:0}
   .reader-v2 #toolsButton svg{width:22px}
   .reader-v2 .reading-column,.reader-v2.focus-mode .reading-column{width:100%;padding:44px 26px 56px;min-height:calc(100dvh - 58px)}
   .reader-v2 h1{font-size:32px;line-height:1.18;letter-spacing:-.5px;margin-bottom:34px}
