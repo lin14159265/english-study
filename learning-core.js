@@ -50,6 +50,22 @@
   }
   const senseKey=(wordKey,sense)=>JSON.stringify([wordKey,String(sense).trim().replace(/\s+/g,' ')]);
   function savedSenseKeys(cards){return new Set((Array.isArray(cards)?cards:[]).filter(c=>typeof c?.wordKey==='string'&&typeof c?.sense==='string').map(c=>senseKey(c.wordKey,c.sense)));}
+  function queryMatches(text,query='') {
+    const clean=value=>String(value??'').normalize('NFKC').toLocaleLowerCase().replace(/\s+/g,' ').trim();
+    const tokens=clean(query).split(' ').filter(Boolean);if(!tokens.length)return true;
+    const haystack=clean(text);
+    return tokens.every(token=>haystack.includes(token));
+  }
+  function filterReview(records,{query='',unresolved=false}={}) {
+    return (Array.isArray(records)?records:[]).filter(r=>{
+      if(!r||unresolved&&r.resolved)return false;
+      if(!String(query).trim())return true;
+      const q=r.question||{};
+      const fields=[r.word,r.form,r.sense,r.context,r.en,r.own,r.reason,r.reference,r.articleTitle,
+        ...(r.categories||[]),q.prompt,q.explanation,...(q.choices||[]).map(c=>c.text),...(q.evidence||[]).map(e=>e.quote)];
+      return queryMatches(fields.filter(x=>typeof x==='string').join(' '),query);
+    });
+  }
   function articleSentences(article) {
     return article.plain.flatMap((p,paragraph)=>{
       const supplied = article.sentenceTranslations?.[paragraph];
@@ -106,7 +122,7 @@
     state.notes = [...state.notes.filter(n=>n.id!==entry.id),note];
     return true;
   }
-  const api = {sentences,contextFor,usage,resolveUse,senseKey,savedSenseKeys,articleSentences,locate,empty,load,migrate,rate,saveNote,categories};
+  const api = {sentences,contextFor,usage,resolveUse,senseKey,savedSenseKeys,queryMatches,filterReview,articleSentences,locate,empty,load,migrate,rate,saveNote,categories};
   if (typeof module!=='undefined' && module.exports) module.exports=api;
   else root.StudyLearningCore=api;
 })(typeof window!=='undefined' ? window : globalThis);

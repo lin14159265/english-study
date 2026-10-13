@@ -7,7 +7,7 @@
   function create({data,current,legacy,toast,changed,navigate,openSentence,questionCount,renderQuestions,undoQuestion,removedQuestionCount}) {
     const raw=root.StudyState.get('learning',null);
     let state=C.load(raw);
-    let selected=null,reviewView='words',hiddenAnswers=false,quizRevealed=false,sentenceList=[],sentenceIndex=0,referenceVisible=false;
+    let selected=null,reviewView='words',hiddenAnswers=false,quizRevealed=false,sentenceList=[],sentenceIndex=0,referenceVisible=false,reviewLimit=50;
     function persist() {
       try {return root.StudyState.set('learning',state);}
       catch {toast('浏览器未能保存学习记录，本次修改仅暂存在页面中');return false;}
@@ -58,21 +58,36 @@
       const where=C.locate(data,note);
       return `<article class="learning-card"><div class="learning-card-heading"><span class="learning-meta">${esc(note.articleTitle)} · 第 ${note.paragraph+1} 段</span><button class="text-button" data-remove-note="${esc(note.id)}" aria-label="移除这条错句">移除</button></div><p class="saved-context" lang="en">${esc(note.en)}</p><p class="error-tags">${note.categories.map(esc).join(' · ')}${note.resolved?' · 已理解':''}</p><details><summary>核对我的理解与参考</summary><p class="field-label">我的理解</p><p>${esc(note.own)}</p><p class="field-label">${note.referenceKind==='sentence'?'本句参考译文':'本段参考译文（非逐句答案）'}</p><p>${esc(note.reference)}</p>${note.reason?`<p class="field-label">易错原因</p><p>${esc(note.reason)}</p>`:''}</details><div class="learning-actions"><button class="text-button" data-resolve-note="${esc(note.id)}">${note.resolved?'仍需复习':'标记已理解'}</button>${where?`<button class="text-button" data-edit-note="${esc(note.id)}">再做一次 / 修改记录</button>`:'<span class="learning-meta">原资料已移除或改写，保留错句快照。</span>'}</div></article>`;
     }
-    function renderReview() {
+    function renderReview({appendFrom=null}={}) {
       $('reviewWords').setAttribute('aria-pressed',String(reviewView==='words'));
       $('reviewSentences').setAttribute('aria-pressed',String(reviewView==='sentences'));
       $('reviewQuestions').setAttribute('aria-pressed',String(reviewView==='questions'));
       $('hideReviewMeanings').hidden=reviewView!=='words';
       $('undoLearningRemove').hidden=reviewView==='questions'?!removedQuestionCount():!state.trash.length;
-      $('reviewSummary').textContent=reviewView==='questions'?`${questionCount()} 道阅读错题`:reviewView==='words'?`${state.cards.length} 张义项卡`:`${state.notes.length} 条错句 · ${state.notes.filter(n=>!n.resolved).length} 条待复习`;
-      $('reviewCount').textContent=state.cards.length+state.notes.length+questionCount() || '';
-      $('reviewList').innerHTML=reviewView==='questions'?renderQuestions():reviewView==='words'
-        ? [...state.cards].reverse().map(wordCard).join('') || '<p class="empty-state">还没有义项卡。点击正文目标词，收藏本次用义和原句。</p>'
-        : [...state.notes].reverse().map(noteCard).join('') || '<p class="empty-state">还没有错句。到“逐句练习”写下理解、核对参考，再保存需要复习的句子。</p>';
+      const options={query:$('reviewSearch').value,unresolved:reviewView!=='words'&&$('reviewUnresolved').checked,limit:reviewLimit};
+      const rows=reviewView==='questions'?null:C.filterReview(reviewView==='words'?state.cards:state.notes,options).reverse();
+      const questionTotal=questionCount(),filtered=!!(options.query.trim()||options.unresolved);
+      const count=rows?rows.length:filtered?questionCount(options):questionTotal;
+      const total=reviewView==='questions'?questionTotal:reviewView==='words'?state.cards.length:state.notes.length;
+      const name=reviewView==='questions'?'道阅读错题':reviewView==='words'?'张义项卡':'条错句';
+      $('reviewSummary').textContent=filtered?`找到 ${count} / ${total} ${name}`:`${total} ${name}${reviewView==='sentences'?` · ${state.notes.filter(n=>!n.resolved).length} 条待复习`:''}`;
+      $('reviewCount').textContent=state.cards.length+state.notes.length+questionTotal || '';
+      $('reviewUnresolvedLabel').hidden=reviewView==='words';$('reviewClear').hidden=!filtered;
+      const html=filtered&&!count?'<p class="empty-state">没有找到符合筛选的记录。清除筛选可查看全部记录。</p>':reviewView==='questions'?renderQuestions({...options,offset:appendFrom??0}):reviewView==='words'
+        ? rows.slice(appendFrom??0,reviewLimit).map(wordCard).join('') || '<p class="empty-state">还没有义项卡。点击正文目标词，收藏本次用义和原句。</p>'
+        : rows.slice(appendFrom??0,reviewLimit).map(noteCard).join('') || '<p class="empty-state">还没有错句。到“逐句练习”写下理解、核对参考，再保存需要复习的句子。</p>';
+      if(appendFrom!==null)$('reviewList').insertAdjacentHTML('beforeend',html);else $('reviewList').innerHTML=html;
+      $('reviewMore').hidden=count<=reviewLimit;$('reviewMore').textContent=`再显示 ${Math.min(50,Math.max(0,count-reviewLimit))} 条`;
+      $('reviewPageStatus').textContent=count>50?`已显示 ${Math.min(reviewLimit,count)} / ${count} 条` : '';
     }
-    $('reviewQuestions').addEventListener('click',()=>{reviewView='questions';renderReview();});
-    $('reviewWords').addEventListener('click',()=>{reviewView='words';renderReview();});
-    $('reviewSentences').addEventListener('click',()=>{reviewView='sentences';renderReview();});
+    function changeReview(view){reviewView=view;reviewLimit=50;renderReview();}
+    $('reviewQuestions').addEventListener('click',()=>changeReview('questions'));
+    $('reviewWords').addEventListener('click',()=>changeReview('words'));
+    $('reviewSentences').addEventListener('click',()=>changeReview('sentences'));
+    $('reviewSearch').addEventListener('input',()=>{reviewLimit=50;renderReview();});
+    $('reviewUnresolved').addEventListener('change',()=>{reviewLimit=50;renderReview();});
+    $('reviewClear').addEventListener('click',()=>{$('reviewSearch').value='';$('reviewUnresolved').checked=false;reviewLimit=50;renderReview();});
+    $('reviewMore').addEventListener('click',()=>{const appendFrom=reviewLimit;reviewLimit+=50;renderReview({appendFrom});});
     $('undoLearningRemove').addEventListener('click',()=>{
       if(reviewView==='questions'){undoQuestion();return;}
       const item=state.trash.pop();if(!item)return;
@@ -146,7 +161,7 @@
     });
     function libraryChanged({external=false}={}) {if(C.migrate(state,legacy,data)&&!external)persist();articleChanged();renderReview();}
     return {entry,saved,toggle,prepare,renderReview,articleChanged,libraryChanged,savedSenseKeys:()=>C.savedSenseKeys(state.cards),
-      reloadState:()=>{legacy=root.StudyState.get('reader',{}).review||[];state=C.load(root.StudyState.get('learning',null));selected=null;$('guessMode').checked=state.guessMode;renderReview();articleChanged();},setReviewView:v=>{reviewView=['words','sentences','questions'].includes(v)?v:'words';renderReview();},selected:()=>selected,count:()=>state.cards.length+state.notes.length+questionCount()};
+      reloadState:()=>{legacy=root.StudyState.get('reader',{}).review||[];state=C.load(root.StudyState.get('learning',null));selected=null;$('guessMode').checked=state.guessMode;renderReview();articleChanged();},setReviewView:v=>changeReview(['words','sentences','questions'].includes(v)?v:'words'),selected:()=>selected,count:()=>state.cards.length+state.notes.length+questionCount()};
   }
   root.StudyLearning={create};
 })(window);

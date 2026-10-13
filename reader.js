@@ -308,7 +308,7 @@
   }
   learning = StudyLearning.create({data,current,legacy:state.review,toast,
     changed:()=>{applyWordHighlights();renderVocabulary();if(selectedWord)updateSaveWordButton();experience?.changed();},navigate:(id,p)=>{if(experience)experience.origin(data.articles[id-1].key,p,{activity:'review-list',view:'words'});else jump(id,p);},
-    questionCount:()=>workspace?.wrongCount()||0,renderQuestions:()=>workspace?.renderWrongQuestions()||'',undoQuestion:()=>workspace?.undoQuestion(),removedQuestionCount:()=>workspace?.removedQuestionCount()||0,
+    questionCount:options=>workspace?.wrongCount(options)||0,renderQuestions:options=>workspace?.renderWrongQuestions(options)||'',undoQuestion:()=>workspace?.undoQuestion(),removedQuestionCount:()=>workspace?.removedQuestionCount()||0,
     openSentence:snapshot=>{
       experience?.remember({activity:'review-list',view:'sentences'});
       const id=idForKey(snapshot.articleKey);if(!id)return;

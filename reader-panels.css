@@ -27,6 +27,9 @@
 .reader-v2 .settings-dialog .close-dialog:hover{background:var(--hover);color:var(--text)}
 .reader-v2 #toolsDialog .panel-help-entry{border-top:1px solid var(--border);padding:14px 0 0;margin-top:16px}
 .reader-v2 #toolsDialog #guideOpen{font-size:14px;min-height:44px;color:var(--accent)}
+.reader-v2 #toolsDialog .tool-finder{margin:18px 0 22px}
+.reader-v2 #toolsDialog .tool-finder label{display:block;font-size:12px;color:var(--muted);margin-bottom:8px}
+.reader-v2 #toolsDialog #toolsSearch{width:100%}
 .reader-v2 .guide-dialog{width:760px}
 .reader-v2 .guide-dialog .guide-intro{color:var(--muted);margin:0 0 22px}
 .reader-v2 .guide-dialog .guide-search-label{display:block;font-size:13px;margin-bottom:8px}

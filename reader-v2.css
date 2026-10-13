@@ -200,7 +200,19 @@
   .reader-v2.word-overlay .word-popover{padding:14px 18px}
 }
 @media(prefers-reduced-motion:reduce){.reader-v2 .sidebar{transition:none}}
+.reader-v2 .review-filter{margin:20px 0 24px;padding-bottom:18px;border-bottom:1px solid var(--border);font-size:13px}
+.reader-v2 .review-filter>label{display:block;color:var(--muted);margin-bottom:8px}
+.reader-v2 #reviewSearch{width:100%;min-height:44px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font:14px/1.6 system-ui,sans-serif}
+.reader-v2 #reviewSearch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.reader-v2 .review-filter>div{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:8px}
+.reader-v2 #reviewUnresolvedLabel{display:inline-flex;gap:8px;align-items:center;min-height:44px}
+.reader-v2 #reviewUnresolved{width:18px;height:18px;accent-color:var(--accent)}
+.reader-v2 #reviewClear{min-height:44px;color:var(--accent)}
+.reader-v2 .review-pagination{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;margin-top:22px;font-size:12px;color:var(--muted)}
+.reader-v2 #reviewMore{min-height:44px}
+@media(pointer:coarse){.reader-v2 #reviewSearch{font-size:16px}}
 @media print{
+  .reader-v2 .review-filter,.reader-v2 .review-pagination{display:none!important}
   .reader-v2 .margin-left,.reader-v2 .margin-right,.reader-v2 #backToReading,.reader-v2 .reading-end,.reader-v2 .reading-save-notice,.reader-v2 #activeTask{display:none!important}
   .reader-v2 .reading-column{width:100%;padding:0;background:white;min-height:0}
   .reader-v2 h1{font-size:28px}
