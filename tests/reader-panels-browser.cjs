@@ -107,6 +107,34 @@ async function test(name,fn){await fn();checks.push({name,pass:true});console.lo
  await test('backdrop dismissal returns to the parent with no accidental double pop from native close events',async()=>{
   await open(p,'toolsLookup','lookupDialog');await p.mouse.click(2,2);await p.waitForTimeout(150);assert.ok(await p.locator('#toolsDialog').isVisible());assert.equal(await p.evaluate(()=>StudyPanels.depth()),1);await p.keyboard.press('Escape');await p.waitForTimeout(150);assert.equal(await p.evaluate(()=>StudyPanels.depth()),0);assert.equal(await p.locator('dialog[open]').count(),0);
  });
+ await test('usage guide opens from More, lists thirteen real topics and preserves learning state and parent focus',async()=>{
+  const before=await p.evaluate(()=>JSON.stringify({learning:StudyState.get('learning'),extra:StudyState.get('extra')})),url=p.url();
+  await open(p,'guideOpen','guideDialog');await headingAligned(p,'guideDialog');await fit(p,'guideDialog');
+  assert.equal(await p.locator('#guideDialog .guide-section').count(),13);assert.equal(await p.locator('#guideDialog .guide-section[open]').count(),1);
+  assert.equal(await p.locator('#guide-start').evaluate(e=>e.open),true);assert.ok((await p.locator('#guide-start').innerText()).includes('先读英文'));
+  assert.equal(await p.locator('#guideDialog .guide-contents').evaluate(e=>e.open),false);assert.equal(p.url(),url);
+  await p.screenshot({path:path.join(out,'guide-desktop.png')});await p.locator('#guideDialog .close-dialog').click();assert.ok(await p.locator('#toolsDialog').isVisible());assert.equal(await p.evaluate(()=>document.activeElement.id),'guideOpen');await close(p,'toolsDialog');
+  assert.equal(await p.evaluate(()=>JSON.stringify({learning:StudyState.get('learning'),extra:StudyState.get('extra')})),before);
+ });
+ await test('guide search expands matching instructions, handles empty results safely and resets on reopening',async()=>{
+  await open(p,'guideOpen','guideDialog');await p.locator('#guideSearch').fill('备份');assert.ok(await p.locator('#guide-backup').isVisible());assert.ok(await p.locator('#guide-backup').evaluate(e=>e.open));assert.ok((await p.locator('#guide-backup').innerText()).includes('合并到当前数据'));
+  await p.locator('#guideSearch').fill('生词');assert.ok(await p.locator('#guide-words').isVisible());assert.ok((await p.locator('#guide-words').innerText()).includes('仅我的生词'));
+  await p.locator('#guideSearch').fill('<img src=x onerror=alert(1)>');assert.ok(await p.locator('#guideEmpty').isVisible());assert.equal(await p.locator('#guideDialog .guide-section:not([hidden])').count(),0);assert.equal(await p.locator('#guideDialog img').count(),0);
+  await close(p,'guideDialog');await open(p,'guideOpen','guideDialog');assert.equal(await p.locator('#guideSearch').inputValue(),'');assert.equal(await p.locator('#guideDialog .guide-section:not([hidden])').count(),13);await close(p,'guideDialog');
+ });
+ await test('guide topic navigation and keyboard foldouts preserve the article URL and close one level at a time',async()=>{
+  const url=p.url();await open(p,'guideOpen','guideDialog');await p.locator('#guideDialog .guide-contents>summary').click();await p.locator('[data-guide-section=backup]').click();
+  assert.ok(await p.locator('#guide-backup').evaluate(e=>e.open));assert.ok(await p.locator('#guideDialog').evaluate(e=>e.scrollTop>100));assert.equal(p.url(),url);
+  const bounds=await p.locator('#guide-backup>summary').boundingBox(),header=await p.locator('#guideDialog .dialog-heading').boundingBox();assert.ok(bounds.y>=header.y+header.height-1,'topic must stay below the sticky heading');
+  await p.locator('#guide-backup>summary').focus();await p.keyboard.press('Enter');assert.equal(await p.locator('#guide-backup').evaluate(e=>e.open),false);
+  await p.locator('#guideToTop').click();assert.equal(await p.locator('#guideDialog').evaluate(e=>e.scrollTop),0);await p.keyboard.press('Escape');assert.ok(await p.locator('#toolsDialog').isVisible());await close(p,'toolsDialog');
+ });
+ await test('reading-only task has a reachable completion control at the article end after the V2 footer removal',async()=>{
+  await p.goto(origin+'/#article-02');await ready(p);await open(p,'queueOpen','queueDialog');await p.locator('#queueMode').selectOption('reading');await p.locator('#queueAdd').click();await p.locator('#queueList [data-task-start]').last().click();
+  await p.locator('#activeTask [data-active-complete]').waitFor({state:'visible'});assert.equal(await p.locator('#finishReading').isVisible(),false);
+  await p.locator('#activeTask [data-active-complete]').click();await p.waitForFunction(()=>StudyState.get('extra').queue.some(t=>t.articleKey==='original/2'&&t.status==='done'));
+  await ready(p);assert.equal(await p.locator('#readButton').getAttribute('aria-pressed'),'true');assert.equal(await p.locator('.article-footer').isVisible(),false);
+ });
  await test('phone and tablet hierarchy, close targets and toggle controls fit and remain operable in both themes',async()=>{
   const c=await browser.newContext({viewport:{width:428,height:926},isMobile:true,hasTouch:true,serviceWorkers:'block'}),m=await c.newPage();await observe(m);
   for(const viewport of [{width:428,height:926},{width:375,height:812},{width:810,height:1080},{width:1080,height:810},{width:926,height:428}]){
@@ -115,10 +143,17 @@ async function test(name,fn){await fn();checks.push({name,pass:true});console.lo
     await theme(m,t);await open(m,'importButton','libraryDialog');await m.locator('#backupOpen').click();await fit(m,'backupDialog');await headingAligned(m,'backupDialog');const back=await m.locator('#backupDialog .panel-back').boundingBox();assert.ok(back.width>=44&&back.height>=44);
     if(viewport.width===428&&t==='dark')await m.screenshot({path:path.join(out,'backup-hierarchy-phone-dark.png')});await m.locator('#backupDialog .panel-back').click();assert.ok(await m.locator('#libraryDialog').isVisible());await m.locator('#libraryDialog .close-dialog').click();assert.ok(await m.locator('#toolsDialog').isVisible());await close(m,'toolsDialog');
     if(viewport.width===428){await open(m,'articleRecordsOpen','articleRecordsDialog');await headingAligned(m,'articleRecordsDialog');await m.screenshot({path:path.join(out,'records-heading-phone-'+t+'.png')});await close(m,'articleRecordsDialog');}
+    await open(m,'guideOpen','guideDialog');await fit(m,'guideDialog');await headingAligned(m,'guideDialog');assert.ok(await m.locator('#guideSearch').evaluate(e=>Number.parseFloat(getComputedStyle(e).fontSize)>=16));await m.locator('#guideSearch').fill('同步');assert.ok(await m.locator('#guide-sync').isVisible());
+    if(viewport.width===428){await m.locator('#guideSearch').fill('');await m.screenshot({path:path.join(out,'guide-phone-'+t+'.png')});}await close(m,'guideDialog');
     await m.locator('#settingsButton').click();await m.locator('#guessMode').check();assert.ok(await m.locator('#guessMode').isChecked());assert.equal(await m.locator('#guessMode').evaluate(e=>e.getBoundingClientRect().width),38);await m.locator('#guessMode').uncheck();if(viewport.width===428)await m.screenshot({path:path.join(out,'aa-toggle-phone-'+t+'.png')});await close(m,'settingsDialog');
    }
   }
   await c.close();
+ });
+ await test('usage guide is cached with the application and remains searchable after a fully offline reopen',async()=>{
+  const c=await browser.newContext({viewport:{width:810,height:1080},serviceWorkers:'allow'}),m=await c.newPage(),offlineErrors=[];m.on('pageerror',e=>offlineErrors.push(e.message));
+  await m.goto(origin+'/#article-02');await ready(m);await m.evaluate(()=>StudyOffline.prepare());await m.waitForFunction(()=>!!navigator.serviceWorker.controller);await c.setOffline(true);await m.reload();await ready(m);
+  await open(m,'guideOpen','guideDialog');await m.locator('#guideSearch').fill('备份');assert.ok(await m.locator('#guide-backup').isVisible());assert.match(await m.title(),/English Study/);assert.deepEqual(offlineErrors,[]);await c.close();
  });
  assert.deepEqual(errors,[]);assert.ok(warnings.every(w=>w.includes('Service Worker registration blocked by Playwright')));fs.writeFileSync(path.join(out,'panels-results.json'),JSON.stringify({origin,checks,errors,warnings,browser:'Chromium; Browser plugin not available'},null,2));console.log(checks.length+' secondary panel browser groups passed');await context.close();
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{await browser?.close();server.close();});

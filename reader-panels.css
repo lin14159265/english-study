@@ -25,6 +25,32 @@
 .reader-v2 .settings-dialog.panel-child .dialog-heading{gap:12px;padding-left:20px}
 .reader-v2 .settings-dialog .close-dialog{width:40px;height:40px;min-width:40px;flex:0 0 40px;border-radius:50%;font:24px/1 system-ui;color:var(--muted)}
 .reader-v2 .settings-dialog .close-dialog:hover{background:var(--hover);color:var(--text)}
+.reader-v2 #toolsDialog .panel-help-entry{border-top:1px solid var(--border);padding:14px 0 0;margin-top:16px}
+.reader-v2 #toolsDialog #guideOpen{font-size:14px;min-height:44px;color:var(--accent)}
+.reader-v2 .guide-dialog{width:760px}
+.reader-v2 .guide-dialog .guide-intro{color:var(--muted);margin:0 0 22px}
+.reader-v2 .guide-dialog .guide-search-label{display:block;font-size:13px;margin-bottom:8px}
+.reader-v2 .guide-dialog #guideSearch{width:100%}
+.reader-v2 .guide-dialog .guide-index{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 20px;margin:20px 0 28px}
+.reader-v2 .guide-dialog .guide-index button{min-height:44px;text-align:left;padding:8px 0;font-size:13px;line-height:1.6;color:var(--muted);border-bottom:1px solid var(--border)}
+.reader-v2 .guide-dialog .guide-index button:hover{color:var(--accent)}
+.reader-v2 .guide-dialog .guide-section{scroll-margin-top:88px;margin:12px 0;padding:0;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.reader-v2 .guide-dialog .guide-section>summary{padding:18px 44px 18px 18px}
+.reader-v2 .guide-dialog .guide-section>summary::before{right:18px}
+.reader-v2 .guide-dialog .guide-section-heading{display:block;min-width:0}
+.reader-v2 .guide-dialog .guide-section-heading strong{display:block;font-size:15px;font-weight:550}
+.reader-v2 .guide-dialog .guide-section-heading small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:5px;line-height:1.7}
+.reader-v2 .guide-dialog .guide-section-body{padding:0 18px 18px;line-height:1.9}
+.reader-v2 .guide-dialog .guide-section-body h3{margin:20px 0 8px}
+.reader-v2 .guide-dialog .guide-section-body p{margin:12px 0}
+.reader-v2 .guide-dialog .guide-section-body :is(ol,ul){padding-left:22px;margin:12px 0}
+.reader-v2 .guide-dialog .guide-section-body li{margin:8px 0;padding-left:2px}
+.reader-v2 .guide-dialog .guide-note{border-left:2px solid var(--border);padding-left:14px;color:var(--muted);font-size:13px}
+.reader-v2 .guide-dialog code{font-size:12px;overflow-wrap:anywhere}
+.reader-v2 .guide-dialog dt{font-weight:550;margin-top:14px}
+.reader-v2 .guide-dialog dd{margin:4px 0 12px;color:var(--muted)}
+.reader-v2 .guide-dialog #guideToTop{margin-top:14px;color:var(--accent);min-height:44px}
+@media(max-width:600px){.reader-v2 .guide-dialog .guide-index{grid-template-columns:1fr;gap:2px;margin:14px 0 22px}.reader-v2 .guide-dialog .guide-section>summary{padding:15px 38px 15px 14px}.reader-v2 .guide-dialog .guide-section-body{padding:0 14px 14px}}
 .reader-v2 .settings-dialog h3{font-size:15px;font-weight:550;margin:26px 0 12px;line-height:1.6}
 .reader-v2 .settings-dialog .panel-section-title{font-size:12px;font-weight:500;color:var(--muted);margin:0 0 8px;letter-spacing:.03em}
 .reader-v2 .settings-dialog p{overflow-wrap:anywhere}
