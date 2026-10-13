@@ -12,6 +12,17 @@ async function open(p,id,dialog){if(!await p.locator('#toolsDialog').evaluate(d=
 async function close(p,id){await p.locator('#'+id+' .close-dialog').click();if(id!=='toolsDialog'&&await p.locator('#toolsDialog').evaluate(d=>d.open)){assert.equal(await p.locator('dialog[open]').count(),1);await p.locator('#toolsDialog .close-dialog').click();}assert.equal(await p.locator('dialog[open]').count(),0);}
 async function theme(p,value){await p.locator('#settingsButton').click();await p.locator('.theme-options label').filter({has:p.locator('[value='+value+']')}).click();await close(p,'settingsDialog');await ready(p);}
 async function fit(p,dialog){const x=await p.locator('#'+dialog).evaluate(d=>{const r=d.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,overflow:d.scrollWidth-d.clientWidth,vw:innerWidth,vh:innerHeight};});assert.ok(x.left>=-1&&x.right<=x.vw+1&&x.top>=-1&&x.bottom<=x.vh+1,JSON.stringify(x));assert.ok(x.overflow<=1,'horizontal dialog overflow '+dialog+' '+JSON.stringify(x));}
+async function headingAligned(p,dialog){
+ assert.equal(await p.locator('#'+dialog+' .panel-breadcrumb').count(),0);
+ const x=await p.locator('#'+dialog+' .dialog-heading').evaluate(h=>{
+  const rect=e=>{const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,left:r.left,right:r.right};};
+  return {title:rect(h.querySelector('h2')),back:rect(h.querySelector('.panel-back')),svg:rect(h.querySelector('.panel-back svg')),close:rect(h.querySelector('.close-dialog'))};
+ });
+ assert.ok(Math.abs(x.back.y-x.title.y)<1&&Math.abs(x.close.y-x.title.y)<1,'header vertical alignment '+dialog+' '+JSON.stringify(x));
+ assert.ok(Math.abs(x.svg.x-x.back.x)<1&&Math.abs(x.svg.y-x.back.y)<1,'back icon centered '+dialog+' '+JSON.stringify(x));
+ assert.ok(x.back.right<=x.title.left&&x.title.right<=x.close.left,'header overlap '+dialog+' '+JSON.stringify(x));
+ assert.equal(await p.locator('#'+dialog+' .panel-back').getAttribute('aria-label'),'返回上一级');
+}
 async function test(name,fn){await fn();checks.push({name,pass:true});console.log('PASS',name);}
 (async()=>{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));origin='http://127.0.0.1:'+server.address().port;
@@ -64,14 +75,15 @@ async function test(name,fn){await fn();checks.push({name,pass:true});console.lo
   await p.evaluate(()=>document.addEventListener('click',e=>{if(e.target.closest('#toolsDialog .panel-menu-item'))window.__menuScroll=document.querySelector('#toolsDialog').scrollTop;},{capture:true}));
   const before=await p.evaluate(()=>JSON.stringify({learning:StudyState.get('learning'),extra:StudyState.get('extra')}));
   for(const [id,dialog]of routes){
-   await open(p,id,dialog);assert.equal(await p.evaluate(()=>StudyPanels.depth()),2);assert.equal(await p.locator('#'+dialog+' .panel-breadcrumb').innerText(),'更多');
+   await open(p,id,dialog);assert.equal(await p.evaluate(()=>StudyPanels.depth()),2);await headingAligned(p,dialog);
+   if(id==='articleRecordsOpen')await p.screenshot({path:path.join(out,'records-heading-desktop.png')});
    await p.locator('#'+dialog+' .close-dialog').click();assert.equal(await p.locator('#toolsDialog').evaluate(d=>d.open),true);assert.equal(await p.evaluate(()=>StudyPanels.depth()),1);
    assert.equal(await p.evaluate(()=>document.activeElement.id),id);assert.ok(await p.evaluate(()=>Math.abs(document.querySelector('#toolsDialog').scrollTop-window.__menuScroll)<2));await close(p,'toolsDialog');
   }
   assert.equal(await p.evaluate(()=>JSON.stringify({learning:StudyState.get('learning'),extra:StudyState.get('extra')})),before);
  });
  await test('three-level import and backup navigation returns one level at a time via X, Escape and explicit back',async()=>{
-  await open(p,'importButton','libraryDialog');await p.locator('#backupOpen').click();assert.ok(await p.locator('#backupDialog').isVisible());assert.equal(await p.evaluate(()=>StudyPanels.depth()),3);assert.equal(await p.locator('#backupDialog .panel-breadcrumb').innerText(),'更多 / 导入与资料');await p.screenshot({path:path.join(out,'backup-hierarchy-desktop.png')});
+  await open(p,'importButton','libraryDialog');await p.locator('#backupOpen').click();assert.ok(await p.locator('#backupDialog').isVisible());assert.equal(await p.evaluate(()=>StudyPanels.depth()),3);await headingAligned(p,'backupDialog');await p.screenshot({path:path.join(out,'backup-hierarchy-desktop.png')});
   await p.locator('#backupDialog .close-dialog').click();assert.ok(await p.locator('#libraryDialog').isVisible());assert.equal(await p.evaluate(()=>StudyPanels.depth()),2);assert.equal(await p.evaluate(()=>document.activeElement.id),'backupOpen');
   await p.keyboard.press('Escape');assert.ok(await p.locator('#toolsDialog').isVisible());assert.equal(await p.evaluate(()=>StudyPanels.depth()),1);await close(p,'toolsDialog');
   await open(p,'toolsBackup','backupDialog');await p.locator('#backupDialog .panel-back').click();assert.ok(await p.locator('#toolsDialog').isVisible());await close(p,'toolsDialog');
@@ -100,8 +112,9 @@ async function test(name,fn){await fn();checks.push({name,pass:true});console.lo
   for(const viewport of [{width:428,height:926},{width:375,height:812},{width:810,height:1080},{width:1080,height:810},{width:926,height:428}]){
    await m.setViewportSize(viewport);await m.waitForTimeout(120);
    for(const t of ['light','dark']){
-    await theme(m,t);await open(m,'importButton','libraryDialog');await m.locator('#backupOpen').click();await fit(m,'backupDialog');const back=await m.locator('#backupDialog .panel-back').boundingBox();assert.ok(back.width>=44&&back.height>=44);
+    await theme(m,t);await open(m,'importButton','libraryDialog');await m.locator('#backupOpen').click();await fit(m,'backupDialog');await headingAligned(m,'backupDialog');const back=await m.locator('#backupDialog .panel-back').boundingBox();assert.ok(back.width>=44&&back.height>=44);
     if(viewport.width===428&&t==='dark')await m.screenshot({path:path.join(out,'backup-hierarchy-phone-dark.png')});await m.locator('#backupDialog .panel-back').click();assert.ok(await m.locator('#libraryDialog').isVisible());await m.locator('#libraryDialog .close-dialog').click();assert.ok(await m.locator('#toolsDialog').isVisible());await close(m,'toolsDialog');
+    if(viewport.width===428){await open(m,'articleRecordsOpen','articleRecordsDialog');await headingAligned(m,'articleRecordsDialog');await m.screenshot({path:path.join(out,'records-heading-phone-'+t+'.png')});await close(m,'articleRecordsDialog');}
     await m.locator('#settingsButton').click();await m.locator('#guessMode').check();assert.ok(await m.locator('#guessMode').isChecked());assert.equal(await m.locator('#guessMode').evaluate(e=>e.getBoundingClientRect().width),38);await m.locator('#guessMode').uncheck();if(viewport.width===428)await m.screenshot({path:path.join(out,'aa-toggle-phone-'+t+'.png')});await close(m,'settingsDialog');
    }
   }

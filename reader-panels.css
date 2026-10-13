@@ -13,13 +13,13 @@
 .reader-v2 #toolsDialog{width:660px;max-width:calc(100vw - 40px)}
 .reader-v2 .settings-dialog .dialog-heading{
   position:sticky;top:-28px;z-index:4;margin:-28px -32px 24px;padding:20px 24px 18px 32px;
-  background:var(--surface);border-bottom:1px solid var(--border);gap:16px;
+  background:var(--surface);border-bottom:1px solid var(--border);gap:16px;align-items:center;
 }
 .reader-v2 .settings-dialog .dialog-heading h2{font-size:22px;font-weight:550;line-height:1.4;letter-spacing:.01em}
 .reader-v2 .settings-dialog .dialog-heading .field-label{display:none}
-.reader-v2 .settings-dialog .panel-heading-copy{flex:1;min-width:0}
-.reader-v2 .settings-dialog .panel-breadcrumb{font-size:11px;color:var(--muted);line-height:1.6;margin:0 0 4px;overflow-wrap:anywhere}
-.reader-v2 .settings-dialog .panel-back{width:36px;height:40px;min-width:36px;flex:0 0 36px;border-radius:8px;color:var(--muted);padding:8px}
+.reader-v2 .settings-dialog .panel-heading-copy{display:flex;align-items:center;flex:1;min-width:0}
+.reader-v2 .settings-dialog .dialog-heading .icon-button{display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0}
+.reader-v2 .settings-dialog .panel-back{width:40px;height:40px;min-width:40px;flex:0 0 40px;border-radius:8px;color:var(--muted)}
 .reader-v2 .settings-dialog .panel-back svg{width:20px;height:20px;stroke-width:1.6}
 .reader-v2 .settings-dialog .panel-back:hover{background:var(--hover);color:var(--text)}
 .reader-v2 .settings-dialog.panel-child .dialog-heading{gap:12px;padding-left:20px}
