@@ -17,16 +17,16 @@
     toggles(d);
     if(prepared.has(d))return prepared.get(d);
     const heading=d.querySelector('.dialog-heading'),closeButton=heading?.querySelector('.close-dialog');
-    let back,crumb;
+    let back;
     if(heading&&closeButton){
       const copy=document.createElement('div');copy.className='panel-heading-copy';
       for(const node of [...heading.childNodes])if(node!==closeButton)copy.append(node);
-      heading.prepend(copy);crumb=document.createElement('p');crumb.className='panel-breadcrumb';copy.prepend(crumb);
+      heading.prepend(copy);
       back=document.createElement('button');back.type='button';back.className='icon-button panel-back';back.hidden=true;
       back.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5-7 7 7 7"/></svg>';
       heading.prepend(back);back.addEventListener('click',()=>close(d));
     }
-    const ui={back,crumb,closeButton,label:closeButton?.getAttribute('aria-label')};prepared.set(d,ui);
+    const ui={back,closeButton,label:closeButton?.getAttribute('aria-label')};prepared.set(d,ui);
     d.addEventListener('cancel',e=>{e.preventDefault();close(d);});
     // Also support native method=dialog submission and existing business actions
     // that close a panel after saving. Transition closes are not current entries.
@@ -37,8 +37,7 @@
     const entry=stack.at(-1);if(!entry)return;
     const d=entry.dialog,ui=prepare(d),parent=stack.at(-2)?.dialog;
     d.classList.toggle('panel-child',!!parent);
-    if(ui.back){ui.back.hidden=!parent;ui.back.setAttribute('aria-label',parent?'返回'+title(parent):'返回');ui.back.title=ui.back.getAttribute('aria-label');}
-    if(ui.crumb){ui.crumb.hidden=!parent;ui.crumb.textContent=stack.slice(0,-1).map(e=>title(e.dialog)).join(' / ');}
+    if(ui.back){ui.back.hidden=!parent;ui.back.setAttribute('aria-label','返回上一级');ui.back.title='返回上一级';}
     if(ui.closeButton)ui.closeButton.setAttribute('aria-label',parent?'关闭'+title(d)+'并返回'+title(parent):ui.label||'关闭'+title(d));
   }
   function focus(element,fallback){
