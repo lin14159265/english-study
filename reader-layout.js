@@ -19,8 +19,9 @@
     for(const id of ['importButton','cloudButton'])$(id).addEventListener('click',()=>menu.close(),{capture:true});
     const settings=$('settingsDialog');
     const options=document.createElement('div');options.className='settings-shortcuts';options.append($('focusButton'),$('themeButton'),$('guessMode').closest('.reading-practice'));
-    settings.append(options);
-    $('focusButton').insertAdjacentHTML('beforeend','<span>专注阅读</span>');$('themeButton').insertAdjacentHTML('afterend','<span class="settings-note">主题也可在上方选择，原有阅读设置会保留。</span>');
+    for(const button of options.querySelectorAll('button'))button.type='button';
+    options.insertAdjacentHTML('afterbegin','<h3 class="panel-section-title">阅读辅助</h3>');
+    settings.querySelector('form').insertBefore(options,settings.querySelector('.settings-footer'));
     $('continueReading').classList.add('directory-continue');$('sidebar').insertBefore($('continueReading'),$('articleSearch').closest('label'));
     // One live popover is moved between desktop dock and mobile overlay; never clone IDs/events.
     const detail=document.createElement('details');detail.className='word-details';detail.innerHTML='<summary>自评与更多</summary>';
@@ -28,6 +29,28 @@
     pop.append(detail);
     pop.insertBefore($('popoverContext'),$('saveWord'));
     $('finishReading').hidden=true;menu.append(document.querySelector('.difficulty-row'));
+    // Move the existing live controls; their IDs, handlers, status nodes and locks
+    // remain intact. Icons decorate the presentation, never replace control text.
+    const menuIcons={book:'<path d="M12 7c-2-2-6-3-10-2v14c4-1 8 0 10 2 2-2 6-3 10-2V5c-4-1-8 0-10 2Z"/><path d="M12 7v14"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',edit:'<path d="m15 4 5 5M4 20l5-1L20 8a2 2 0 0 0-4-4L5 15l-1 5Z"/>',check:'<path d="m7 12 3 3 7-7"/><rect x="3" y="3" width="18" height="18" rx="3"/>',repeat:'<path d="m17 2 4 4-4 4M3 11V8a2 2 0 0 1 2-2h16M7 22l-4-4 4-4m14-1v3a2 2 0 0 1-2 2H3"/>',note:'<path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M14 3v7h7M7 14h10m-10 3h7"/>',list:'<path d="M9 6h12M9 12h12M9 18h12M3 6h1m-1 6h1m-1 6h1"/>',chart:'<path d="M4 3v17h17M9 15v-5m5 5V6m5 9v-3"/>',plus:'<path d="M12 4v16M4 12h16"/>',backup:'<path d="M3 10v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M12 3v12m-4-4 4 4 4-4M3 6h4m10 0h4"/>',cloud:'<path d="M7 18h11a4 4 0 0 0 .4-8 6.5 6.5 0 0 0-12.3-1A4.5 4.5 0 0 0 7 18Z"/>',save:'<path d="M5 3h12l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M7 3v6h9V3M7 21v-7h10v7"/>'};
+    function menuGroup(title,entries){
+      const group=document.createElement('section');group.className='panel-menu-group';group.setAttribute('aria-label',title);group.innerHTML=`<h3 class="panel-section-title">${esc(title)}</h3><div class="panel-menu-items"></div>`;
+      for(const [id,kind,label]of entries){
+        const button=$(id),text=document.createElement('span');text.className='panel-menu-text';
+        for(const svg of button.querySelectorAll('svg'))svg.remove();
+        const status=label?document.createElement('small'):text;
+        if(label){text.textContent=label;status.className='panel-menu-status';text.append(status);}
+        while(button.firstChild)status.append(button.firstChild);
+        button.classList.add('panel-menu-item');button.append(text);
+        button.insertAdjacentHTML('afterbegin',`<svg class="panel-menu-icon" viewBox="0 0 24 24" aria-hidden="true">${menuIcons[kind]}</svg>`);
+        button.insertAdjacentHTML('beforeend','<svg class="panel-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>');
+        group.querySelector('.panel-menu-items').append(button);
+      }
+      menu.insertBefore(group,menu.querySelector('.difficulty-row'));
+    }
+    menuGroup('本篇工具',[['articleRecordsOpen','book'],['contextOpen','search'],['editorOpen','edit'],['quizOpen','check']]);
+    menuGroup('学习与复习',[['toolsRound','repeat'],['toolsPending','note'],['toolsLookup','search'],['queueOpen','list'],['toolsInsight','chart']]);
+    menuGroup('资料与设备',[['importButton','plus'],['toolsBackup','backup'],['cloudButton','cloud','云同步'],['saveStatus','save','保存与离线'],['sourceTrust','check']]);
+    for(const container of menu.querySelectorAll('.tool-menu,.study-shortcuts,.menu-device'))container.remove();
     $('readingEnd').append($('readButton'),$('endQuiz'));
     // Remove only obsolete sequential navigation, not any task-queue operation.
     document.querySelectorAll('.prev-button,.next-button,.nav-divider').forEach(n=>n.remove());
