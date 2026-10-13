@@ -51,7 +51,7 @@
   }
   function atomic(path){
     return path[0]==='base'||path[0]==='rollback'||path[0]==='packs'&&path.length===2||path[0]==='state'&&path[1]==='extra'&&(
-      ['edits','editorDrafts','quizDrafts','quizAttempts','reviewRounds'].includes(path[2])&&path.length===4||['reviewSession','editUndo'].includes(path[2])&&path.length===3);
+      ['edits','editorDrafts','quizDrafts','quizAttempts','reviewRounds','studyLexicons','studyBindings','studyDeferrals'].includes(path[2])&&path.length===4||['reviewSession','editUndo'].includes(path[2])&&path.length===3);
   }
   function cursor(path){
     if(path[0]!=='state'||path[1]!=='reader')return false;

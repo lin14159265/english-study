@@ -53,6 +53,7 @@
     if(x.removedQuestions!==undefined&&(!Array.isArray(x.removedQuestions)||x.removedQuestions.some(r=>!object(r)||typeof r.id!=='string'||!validQuestionSnapshot(r.question))))errors.push('已移除错题记录无效。');
     if(x.editUndo!==undefined&&(!object(x.editUndo)||typeof x.editUndo.sourceId!=='string'||x.editUndo.edit!==null&&(!object(x.editUndo.edit)||!P.validate(x.editUndo.edit.payload).ok)))errors.push('修订撤销记录无效。');
     const E=typeof module!=='undefined'&&module.exports?require('./experience-core.js'):root.StudyExperienceCore;if(E)errors.push(...E.validateExtra(x));
+    const Study=typeof module!=='undefined'&&module.exports?require('./study-core.js'):root.StudyCore;if(Study)errors.push(...Study.validateStudy(x));
     return [...new Set(errors)];
   }
   function validQuestionSnapshot(q){return object(q)&&typeof q.id==='string'&&typeof q.prompt==='string'&&q.prompt.trim().length>0&&Array.isArray(q.choices)&&q.choices.length===4&&new Set(q.choices.map(c=>c?.id)).size===4&&q.choices.every(c=>object(c)&&typeof c.id==='string'&&typeof c.text==='string'&&c.text.trim().length>0)&&q.choices.some(c=>c.id===q.answer)&&typeof q.explanation==='string'&&q.explanation.trim().length>0&&Array.isArray(q.evidence)&&q.evidence.length>0&&q.evidence.every(e=>object(e)&&Number.isInteger(e.paragraph)&&e.paragraph>0&&typeof e.quote==='string'&&e.quote.trim().length>0);}
@@ -69,7 +70,7 @@
     const keys=new Set([...Array.from({length:25},(_,i)=>`original/${i+1}`),...b.packs.flatMap(p=>array(p?.articles).map(a=>`${p.id}/${a?.id}`))]);
     const roundItems=[...array(x.reviewRounds),...(x.reviewSession?[x.reviewSession]:[])].flatMap(r=>array(r?.items).map(i=>i?.snapshot));
     const missing=[...array(learning.cards),...array(learning.notes),...array(x.queue),...array(x.pendingSentences),...array(x.lookupWords),...array(x.wrongQuestions),...roundItems].filter(r=>r&&!keys.has(r.articleKey));
-    return {ok:!errors.length,errors,summary:{missing:missing.length,packs:b.packs.length,cards:array(learning.cards).length,notes:array(learning.notes).length,tasks:array(x.queue).length,attempts:array(x.quizAttempts).length,pending:array(x.pendingSentences).filter(s=>s?.status==='pending').length,rounds:array(x.reviewRounds).length,lookup:array(x.lookupWords).length}};
+    return {ok:!errors.length,errors,summary:{missing:missing.length,packs:b.packs.length,cards:array(learning.cards).length,notes:array(learning.notes).length,tasks:array(x.queue).length,attempts:array(x.quizAttempts).length,pending:array(x.pendingSentences).filter(s=>s?.status==='pending').length,rounds:array(x.reviewRounds).length,lookup:array(x.lookupWords).length,lexicons:Object.keys(x.studyLexicons||{}).length,bindings:Object.keys(x.studyBindings||{}).length,deferrals:Object.keys(x.studyDeferrals||{}).length}};
   }
   function parseBackup(s){try{if(s.length>100*1024*1024)return {ok:false,errors:['备份超过 100 MB，请使用分卷备份。']};const b=JSON.parse(s.replace(/^\uFEFF/,''));return {...validateBackup(b),backup:b};}catch{return {ok:false,errors:['备份 JSON 格式错误，未修改任何记录。']};}}
   function mergeList(a,b,prefer,conflicts,label,key='id'){
@@ -116,6 +117,7 @@
     if(a.reader.visitKeys!==undefined||b.reader.visitKeys!==undefined)a.reader.visitKeys=Object.fromEntries([...new Set([...Object.keys(a.reader.visitKeys||{}),...Object.keys(b.reader.visitKeys||{})])].map(key=>[key,Math.max(a.reader.visitKeys?.[key]||0,b.reader.visitKeys?.[key]||0)]));
     if(prefer==='backup'){a.reader.settings=clone(b.reader.settings||{});a.reader.currentKey=b.reader.currentKey;a.reader.resumeKey=b.reader.resumeKey||b.reader.currentKey;a.learning.guessMode=b.learning.guessMode;}
     for(const k of ['difficulty','verifications'])a.extra[k]=mergeMap(a.extra[k]||{},b.extra[k]||{},prefer,conflicts,k);
+    for(const k of ['studyLexicons','studyBindings','studyDeferrals'])if(a.extra[k]!==undefined||b.extra[k]!==undefined)a.extra[k]=mergeMap(a.extra[k]||{},b.extra[k]||{},prefer,conflicts,k==='studyLexicons'?'学习词库':k==='studyBindings'?'义项关联':'复习暂缓');
     for(const k of ['pendingSentences','removedPending','lookupWords','reviewRounds'])a.extra[k]=mergeList(a.extra[k]||[],b.extra[k]||[],prefer,conflicts,k);
     for(const k of ['reviewSession','returnPoint','lastBackupAt'])if(b.extra[k]!==undefined&&(!a.extra[k]||prefer==='backup'))a.extra[k]=clone(b.extra[k]);
     for(const k of ['edits','editorDrafts','quizDrafts'])a.extra[k]=mergeMap(a.extra[k],b.extra[k],prefer,conflicts,k);

@@ -63,7 +63,7 @@
   }
   projectRecords();
   let activeTab = 'reading', selectedWord = null, wordTrigger = null, scrollTimer, toastTimer, storageWarned = false, restoring = true;
-  let learning, workspace, experience, layout, renderedKey, renderedVersion, lastCheckpoint=Date.now(), resizeTimer;
+  let learning, workspace, experience, layout, spaces, renderedKey, renderedVersion, lastCheckpoint=Date.now(), resizeTimer;
   const Position=window.StudyPositionCore;
   const current = () => data.articles[state.current - 1];
   const toast = text => { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 2500); };
@@ -101,7 +101,7 @@
   const flushReader=()=>{if(persist())StudyState.flush().catch(e=>toast(e.message||'保存失败，请重试。'));};
   const recordPosition = () => {
     // A temporary fallback must never acquire the missing article's saved position.
-    if (!restoring && activeTab === 'reading' && state.currentKey === current().key && !$('sidebar').classList.contains('directory-open')) {
+    if (!restoring && (!spaces||spaces.isReading()) && activeTab === 'reading' && state.currentKey === current().key && !$('sidebar').classList.contains('directory-open')) {
       state.positions[state.current] = state.positionKeys[state.currentKey] = Math.max(0,window.scrollY);
       const anchor=captureAnchor();if(anchor)state.anchorKeys[state.currentKey]=anchor;
       recordVisit();
@@ -198,8 +198,10 @@
     layout?.refresh(true);
   }
   function restoreReadingPosition(position,anchor=state.anchorKeys[state.currentKey]) {
+    if(spaces&&!spaces.isReading())return;
     restoring = true;
     requestAnimationFrame(() => requestAnimationFrame(() => {
+      if(spaces&&!spaces.isReading()){restoring=false;return;}
       const target=Position?.resolve(anchor,state.currentKey,paragraphTexts()),range=target&&textRange(target.paragraph,target.offset);
       const rect=range?.getBoundingClientRect();
       window.scrollTo(0,rect?Math.max(0,window.scrollY+rect.top-target.viewportOffset):Number.isFinite(position)?position:0);
@@ -211,7 +213,7 @@
   function setArticle(id, {push=true, position=null, paragraph=null,resume=true} = {}) {
     if (!validId(id)) return;
     window.StudyPanels?.leave();
-    recordPosition(); clearTimeout(scrollTimer);
+    recordPosition(); spaces?.reading(); clearTimeout(scrollTimer);
     state.current = id; state.currentKey = current().key;if(resume)state.resumeKey=state.currentKey;
     recordVisit();
     activeTab = 'reading';
@@ -223,7 +225,7 @@
   function continueReading({remote=false}={}){
     const key=state.resumeKey,id=idForKey(key);if(!key)return;
     if(id&&!remote){setArticle(id);return;}
-    if(!remote)recordPosition();clearTimeout(scrollTimer);
+    if(!remote)recordPosition();spaces?.reading();clearTimeout(scrollTimer);
     state.currentKey=state.resumeKey=key;activeTab='reading';projectRecords();renderArticle();renderTabs();closeDirectory();
     if(!remote)recordVisit();
     if(!remote)flushReader();
@@ -240,14 +242,15 @@
       $(`tab-${tab}`).tabIndex = 0;
     });
     $('reviewCount').textContent = learning.count() || '';
-    layout?.tabChanged(activeTab);
+    layout?.tabChanged(spaces&&!spaces.isReading()?'review':activeTab);spaces?.refresh();
   }
   function setTab(tab) {
     if (!['reading','vocabulary','sentence','translation','review'].includes(tab)) return;
     window.StudyPanels?.leave();
-    if(activeTab === tab)return;
+    if(activeTab === tab){if(tab==='review')spaces?.records();else spaces?.reading();return;}
     recordPosition(); closeWord(); activeTab = tab;
     if (tab === 'review') renderReview();
+    if(tab==='review')spaces?.records();else spaces?.reading();
     renderTabs(); flushReader();
     if (tab === 'reading') restoreReadingPosition(state.positions[state.current]);
     else { restoring = true; requestAnimationFrame(() => { window.scrollTo(0,0); restoring = false; }); }
@@ -334,6 +337,12 @@
     navigate:(key,p)=>{const id=idForKey(key);if(id)jump(id,p);},
     openNote:s=>{learning.articleChanged(s.id);setTab('sentence');$('sentenceOwn').focus();}
   });
+  spaces=window.StudySpaces?.create({data,toast,reader:()=>state,readingActive:()=>activeTab==='reading',checkpoint:()=>window.StudyReaderAPI.checkpoint(),closeAux:()=>{closeWord();closeDirectory();$('selectionActions').hidden=true;},
+    reading:()=>{activeTab='reading';renderTabs();restoreReadingPosition(state.positions[state.current]);},
+    spaceChanged:space=>{layout?.tabChanged(space==='reading'?activeTab:'review');},renderReview,
+    navigate:key=>{const id=idForKey(key);if(id)setArticle(id);else toast('文章尚未加载，历史位置已保留。');},continueReading,
+    origin:(key,p)=>{const id=idForKey(key);if(id)setArticle(id,{position:0,paragraph:p});}
+  });window.StudySpacesAPI=spaces;
   document.addEventListener('study-storage-warning',e=>toast(e.detail));
   paintIcons();
   $('articleSearch').addEventListener('input',renderDirectory);
@@ -463,7 +472,7 @@
     state.resumeKey=next.resumeKey||next.currentKey||visibleKey;
     projectRecords();applySettings();learning.reloadState();applyWordHighlights();
     if(detail.packs!==undefined)await StudyLibrary.reload(detail.packs,{token:detail.libraryToken});
-    renderDirectory();renderVocabulary();renderTabs();updateNavigation();updateContinue();workspace.reloadState();experience.reloadState();layout?.refresh(true);
+    renderDirectory();renderVocabulary();renderTabs();updateNavigation();updateContinue();workspace.reloadState();experience.reloadState();layout?.refresh(true);spaces?.reloadState();
     if(detail.followResume)continueReading({remote:true});
   });
   await StudyState.refresh();persist();
@@ -473,7 +482,7 @@
     if(wasMissing&&state.currentKey===current().key&&!external)recordVisit();
     learning.libraryChanged({external});
     workspace.changed();
-    updateLibraryControls(); renderArticle(); renderTabs();updateContinue(); if(!external)persist();
+    updateLibraryControls(); renderArticle(); renderTabs();spaces?.reloadState();updateContinue(); if(!external)persist();
     if(state.currentKey===current().key)history.replaceState(null,'',articleHash(current()));
     if(activeTab==='reading'&&(!external||wasMissing||renderedKey!==state.currentKey||oldVersion!==renderedVersion))restoreReadingPosition(state.positions[state.current]);
   },select:id=>{const a=data.articles.find(a=>a.batch===id);if(a){$('batchFilter').value=id;$('articleSearch').value='';setArticle(a.id,{position:0});}}});
