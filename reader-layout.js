@@ -49,6 +49,7 @@
     menuGroup('本篇工具',[['articleRecordsOpen','book'],['contextOpen','search'],['editorOpen','edit'],['quizOpen','check']]);
     menuGroup('学习与复习',[['toolsRound','repeat'],['toolsPending','note'],['toolsLookup','search'],['queueOpen','list'],['toolsInsight','chart']]);
     menuGroup('资料与设备',[['importButton','plus'],['toolsBackup','backup'],['cloudButton','cloud','云同步'],['saveStatus','save','保存与离线'],['sourceTrust','check']]);
+    const help=document.createElement('div');help.className='panel-help-entry';help.append($('guideOpen'));menu.insertBefore(help,menu.querySelector('.difficulty-row'));
     for(const container of menu.querySelectorAll('.tool-menu,.study-shortcuts,.menu-device'))container.remove();
     $('readingEnd').append($('readButton'),$('endQuiz'));
     // Remove only obsolete sequential navigation, not any task-queue operation.
