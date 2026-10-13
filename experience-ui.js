@@ -61,5 +61,5 @@ function create(app){const {data,current,toast}=app;document.body.insertAdjacent
   if($('insightDialog').open)openInsights(true);
   changed();
  }
- [['toolsRound',()=>openRound()],['reviewRound',()=>openRound()],['toolsPending',openPending],['reviewPending',openPending],['toolsInsight',openInsights],['toolsLookup',()=>openLookup()]].forEach(([id,fn])=>$(id).addEventListener('click',fn));$('englishBody').addEventListener('click',e=>{const b=e.target.closest('[data-study-paragraph]');if(b)captureParagraph(Number(b.dataset.studyParagraph));});changed();return {changed,reloadState,captureParagraph,savePending,practice,remember,origin,quickCorrection,openPending,openRound,openLookup,analysisHTML};
+ [['toolsRound',()=>openRound()],['reviewRound',()=>openRound()],['toolsPending',openPending],['reviewPending',openPending],['toolsInsight',()=>openInsights()],['toolsLookup',()=>openLookup()]].forEach(([id,fn])=>$(id).addEventListener('click',fn));$('englishBody').addEventListener('click',e=>{const b=e.target.closest('[data-study-paragraph]');if(b)captureParagraph(Number(b.dataset.studyParagraph));});changed();return {changed,reloadState,captureParagraph,savePending,practice,remember,origin,quickCorrection,openPending,openRound,openLookup,analysisHTML};
 }root.StudyExperience={create};})(window);
