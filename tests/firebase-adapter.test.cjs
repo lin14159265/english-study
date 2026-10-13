@@ -47,6 +47,11 @@ test('reading-only commits reuse private pack chunks and only upload changed com
   const added=[...h.data].filter(([key])=>key.includes('/chunks/')&&!before.has(key));
   assert.equal(added.length,2);assert.equal(h.metrics.writes-writes,5);api.close();
 });
+test('V3 private source catalogs, bindings and deferrals survive chunked sync and adapter restart',async()=>{
+  const h=harness(),api=await h.make(),C=require('../study-core'),source={meta:{},words:Array.from({length:6147},(_,i)=>({word:'qa'+i,vocabulary_id:i,senses:Array.from({length:i<2262?3:2},(_,j)=>({id:i*3+j,dictionary_id:1,pos:'n.',definition_cn:'测试义项 '+i+' '+j}))}))};
+  const parsed=C.parseLexicon(source);assert.equal(parsed.ok,true);const input=sample();input.state.extra.studyLexicons={shanbay:parsed.catalog};input.state.extra.studyBindings={record:{status:'independent',at:'2026-10-13T12:00:00.000Z'}};input.state.extra.studyDeferrals={record:{at:'2026-10-13T12:00:00.000Z',until:'2026-10-14T12:00:00.000Z'}};
+  await api.commit({operationId:'v3_private_source_001',expectedVersion:0,snapshot:input});api.close();const restarted=await h.make();assert.deepEqual((await restarted.pull()).snapshot,input);assert.ok([...h.data.values()].filter(v=>v.text).every(v=>Buffer.byteLength(v.text)<=A.CHUNK_BYTES));restarted.close();
+});
 test('persistent operation receipt confirms old retry even after head advanced and client restarted',async()=>{
   const h=harness(),api=await h.make();await api.commit({operationId:'op_device_001',expectedVersion:0,snapshot:sample()});
   await api.commit({operationId:'op_device_002',expectedVersion:1,snapshot:sample('original/8')});api.close();
