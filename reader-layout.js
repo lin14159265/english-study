@@ -16,7 +16,6 @@
     const account=document.createElement('div');account.className='menu-device';account.setAttribute('aria-label','资料与设备');
     for(const id of ['importButton','cloudButton','saveStatus','sourceTrust'])account.append($(id));
     menu.append(account);
-    for(const id of ['importButton','cloudButton'])$(id).addEventListener('click',()=>menu.close(),{capture:true});
     const settings=$('settingsDialog');
     const options=document.createElement('div');options.className='settings-shortcuts';options.append($('focusButton'),$('themeButton'),$('guessMode').closest('.reading-practice'));
     for(const button of options.querySelectorAll('button'))button.type='button';
@@ -59,7 +58,7 @@
     document.querySelector('.reading-note').hidden=true;
     $('articleMeta').hidden=true;document.querySelector('.source-trust').hidden=true;
     function openRecords(){
-      document.querySelectorAll('dialog[open]').forEach(d=>d.close());app.closeWord();renderRecords();$('articleRecordsDialog').showModal();
+      app.closeWord();renderRecords();root.StudyPanels.open('articleRecordsDialog');
     }
     $('articleRecordsOpen').addEventListener('click',openRecords);
     function sourceLink(kind,r){
@@ -150,7 +149,7 @@
       if(!r)return;
       const where=L.locate(data,r);
       if(!where){openRecords();toast('原文已变化，保留历史快照。请在完整记录中核对。');return;}
-      $('articleRecordsDialog').close();
+      root.StudyPanels.leave();
       if(kind==='pending'){root.StudyExperienceAPI.practice(r);return;}
       if(kind==='note'){app.openNote(r);return;}
       app.navigate(r.articleKey,r.paragraph);

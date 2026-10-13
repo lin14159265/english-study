@@ -178,19 +178,19 @@ window.StudyLibrary = (() => {
   }
   function attach(callbacks) {
     hooks = callbacks;
-    $('importButton').addEventListener('click',()=>{ hooks.closeAux(); removePending = null; renderManager(); $('libraryDialog').showModal(); });
+    $('importButton').addEventListener('click',()=>{ hooks.closeAux(); removePending = null; renderManager(); window.StudyPanels.open('libraryDialog'); });
     $('packFile').addEventListener('change',async e=>{const files=[...e.target.files];if(!files.length)return;if(files.length>50||files.some(f=>f.size>10*1024*1024)||files.reduce((n,f)=>n+f.size,0)>50*1024*1024){draft=null;$('confirmImport').disabled=true;$('importPreview').hidden=false;$('importPreview').textContent='每份最大 10 MB；每批最多 50 份、总计 50 MB。未修改资料。';return;}try{previewBatch(await Promise.all(files.map(async f=>({name:f.name,text:await f.text()}))));}catch{preview('');$('importPreview').textContent='无法读取文件，整批未导入。';}});
     $('previewPasted').addEventListener('click',()=>preview($('packPaste').value));
     $('confirmImport').addEventListener('click',async()=>{
       if (!draft) return;
       const records=draft.map(({payload,result})=>({key:`local:${payload.id}`,source:'local',payload,compiled:result.compiled}));$('confirmImport').disabled=true;
-      try {if(db)await StudyState.writePacks(store=>records.forEach(({compiled,...r})=>store.put(r)));records.forEach(r=>local.set(r.payload.id,r));changed();draft=null;$('packFile').value='';$('packPaste').value='';$('importPreview').hidden=true;$('libraryDialog').close();hooks.select(records[0].payload.id);hooks.toast(db?`${records.length} 份资料已保存到当前浏览器`:'资料仅用于本次打开，请保留 JSON 文件');
+      try {if(db)await StudyState.writePacks(store=>records.forEach(({compiled,...r})=>store.put(r)));records.forEach(r=>local.set(r.payload.id,r));changed();draft=null;$('packFile').value='';$('packPaste').value='';$('importPreview').hidden=true;window.StudyPanels.leave();hooks.select(records[0].payload.id);hooks.toast(db?`${records.length} 份资料已保存到当前浏览器`:'资料仅用于本次打开，请保留 JSON 文件');
       } catch { $('confirmImport').disabled = false; hooks.toast('保存失败，未替换原资料。请保留 JSON 文件后重试。'); }
     });
     $('refreshPublished').addEventListener('click',refresh);
     $('packageList').addEventListener('click',async e=>{
       const open = e.target.closest('[data-open-pack]');
-      if (open) { $('libraryDialog').close(); hooks.select(open.dataset.openPack); return; }
+      if (open) { window.StudyPanels.leave(); hooks.select(open.dataset.openPack); return; }
       const exported = e.target.closest('[data-export-pack]');
       if (exported) { download(effective().find(r=>r.payload.id===exported.dataset.exportPack).payload); return; }
       const remove = e.target.closest('[data-remove-pack]');

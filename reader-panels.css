@@ -17,6 +17,12 @@
 }
 .reader-v2 .settings-dialog .dialog-heading h2{font-size:22px;font-weight:550;line-height:1.4;letter-spacing:.01em}
 .reader-v2 .settings-dialog .dialog-heading .field-label{display:none}
+.reader-v2 .settings-dialog .panel-heading-copy{flex:1;min-width:0}
+.reader-v2 .settings-dialog .panel-breadcrumb{font-size:11px;color:var(--muted);line-height:1.6;margin:0 0 4px;overflow-wrap:anywhere}
+.reader-v2 .settings-dialog .panel-back{width:36px;height:40px;min-width:36px;flex:0 0 36px;border-radius:8px;color:var(--muted);padding:8px}
+.reader-v2 .settings-dialog .panel-back svg{width:20px;height:20px;stroke-width:1.6}
+.reader-v2 .settings-dialog .panel-back:hover{background:var(--hover);color:var(--text)}
+.reader-v2 .settings-dialog.panel-child .dialog-heading{gap:12px;padding-left:20px}
 .reader-v2 .settings-dialog .close-dialog{width:40px;height:40px;min-width:40px;flex:0 0 40px;border-radius:50%;font:24px/1 system-ui;color:var(--muted)}
 .reader-v2 .settings-dialog .close-dialog:hover{background:var(--hover);color:var(--text)}
 .reader-v2 .settings-dialog h3{font-size:15px;font-weight:550;margin:26px 0 12px;line-height:1.6}
@@ -57,6 +63,18 @@
 .reader-v2 .settings-dialog .learning-actions,.reader-v2 .settings-dialog .library-links{gap:10px 14px;align-items:center;margin-top:18px}
 .reader-v2 .settings-dialog .switch-row{gap:18px;min-height:48px;margin:18px 0;font-size:13px;line-height:1.65}
 .reader-v2 .settings-dialog .switch-row input[type=checkbox]{width:20px;height:20px;flex:0 0 20px;accent-color:var(--accent);cursor:pointer}
+.reader-v2 .settings-dialog .panel-toggle{display:inline-flex;position:relative;width:38px;height:24px;flex:0 0 38px;vertical-align:middle}
+.reader-v2 .settings-dialog .panel-toggle input[type=checkbox],.reader-v2 #settingsDialog .panel-toggle input[type=checkbox]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;z-index:1;cursor:pointer}
+.reader-v2 .settings-dialog .panel-toggle-track{position:absolute;inset:1px 0;background:var(--border);border-radius:12px;transition:background .15s;pointer-events:none}
+.reader-v2 .settings-dialog .panel-toggle-track::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;background:var(--surface);border-radius:50%;box-shadow:0 1px 3px #0002;transition:transform .15s}
+.reader-v2 .settings-dialog .panel-toggle input:checked+.panel-toggle-track{background:var(--accent)}
+.reader-v2 .settings-dialog .panel-toggle input:checked+.panel-toggle-track::after{transform:translateX(16px)}
+:root[data-theme=dark] .reader-v2 .settings-dialog .panel-toggle-track::after{background:var(--text)}
+.reader-v2 .settings-dialog .panel-toggle input:focus-visible{outline:0}
+.reader-v2 .settings-dialog .panel-toggle input:focus-visible+.panel-toggle-track{outline:2px solid var(--accent);outline-offset:3px}
+.reader-v2 .settings-dialog .panel-toggle input:disabled+.panel-toggle-track{opacity:.4}
+.reader-v2 #settingsDialog .reading-practice .panel-toggle{display:inline-flex;margin:0}
+.reader-v2 #settingsDialog .reading-practice .panel-toggle-track{margin:0}
 .reader-v2 .settings-dialog details{margin:18px 0}
 .reader-v2 .settings-dialog details>summary{
   min-height:44px;display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text);
@@ -126,7 +144,7 @@
 .reader-v2 .panel-menu-items{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px}
 .reader-v2 #toolsDialog .panel-menu-item{
   display:flex;align-items:center;text-align:left;gap:10px;width:100%;max-width:none;min-width:0;min-height:48px;padding:10px 9px;
-  font:13px/1.6 system-ui,sans-serif;font-weight:400;border:0;border-radius:8px;background:transparent;color:var(--text);white-space:normal;
+  font:14px/1.6 system-ui,sans-serif;font-weight:400;border:0;border-radius:8px;background:transparent;color:var(--text);white-space:normal;
 }
 .reader-v2 #toolsDialog .panel-menu-item:hover{background:var(--hover);color:var(--text)}
 .reader-v2 .panel-menu-icon{width:18px;height:18px;color:var(--muted);stroke-width:1.5;flex:0 0 18px}
@@ -140,7 +158,8 @@
 @media(max-width:600px){
   .reader-v2 .settings-dialog,.reader-v2 .workspace-dialog,.reader-v2 #toolsDialog{width:calc(100vw - 24px);max-width:calc(100vw - 24px);padding:22px 20px;border-radius:14px}
   .reader-v2 .settings-dialog .dialog-heading{top:-22px;margin:-22px -20px 22px;padding:14px 12px 12px 20px}
-  .reader-v2 .settings-dialog .dialog-heading h2{font-size:20px}
+  .reader-v2 .settings-dialog .dialog-heading h2{font-size:20px;overflow-wrap:anywhere}
+  .reader-v2 .settings-dialog.panel-child .dialog-heading{padding-left:12px;gap:8px}
   .reader-v2 .settings-dialog :is(.learning-actions,.library-links){gap:8px 10px}
   .reader-v2 .settings-dialog .vocabulary-tools{display:grid;grid-template-columns:1fr;gap:14px}
   .reader-v2 .settings-dialog .vocabulary-tools label{width:100%;min-width:0}
@@ -159,8 +178,9 @@
 @media(pointer:coarse){
   .reader-v2 .settings-dialog input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=file]),.reader-v2 .settings-dialog textarea,.reader-v2 .settings-dialog select,
   .reader-v2 #settingsDialog :is(.select-label,.switch-row) select{font-size:16px}
-  .reader-v2 .settings-dialog :is(.primary-button,.secondary-button,.close-dialog){min-height:44px}
+  .reader-v2 .settings-dialog :is(.primary-button,.secondary-button,.close-dialog,.panel-back){min-height:44px}
   .reader-v2 .settings-dialog .close-dialog{min-width:44px;flex-basis:44px}
+  .reader-v2 .settings-dialog .panel-back{min-width:44px;flex-basis:44px}
 }
-@media(prefers-reduced-motion:reduce){.reader-v2 .settings-dialog :is(input,textarea,select,summary)::before,.reader-v2 .settings-dialog :is(input,textarea,select){transition:none}}
-@media(forced-colors:active){.reader-v2 .settings-dialog select{appearance:auto;background-image:none}.reader-v2 .settings-dialog details>summary::before{border:1px solid currentColor}.reader-v2 #toolsDialog .tabs button[aria-selected=true]{outline:1px solid currentColor}}
+@media(prefers-reduced-motion:reduce){.reader-v2 .settings-dialog :is(input,textarea,select,summary)::before,.reader-v2 .settings-dialog :is(input,textarea,select,.panel-toggle-track),.reader-v2 .settings-dialog .panel-toggle-track::after{transition:none}}
+@media(forced-colors:active){.reader-v2 .settings-dialog select{appearance:auto;background-image:none}.reader-v2 .settings-dialog details>summary::before{border:1px solid currentColor}.reader-v2 #toolsDialog .tabs button[aria-selected=true]{outline:1px solid currentColor}.reader-v2 .settings-dialog .panel-toggle{width:auto;height:auto;flex-basis:auto}.reader-v2 .settings-dialog .panel-toggle input[type=checkbox],.reader-v2 #settingsDialog .panel-toggle input[type=checkbox]{position:static;opacity:1;width:20px;height:20px}.reader-v2 .panel-toggle-track{display:none}}

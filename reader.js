@@ -210,6 +210,7 @@
   }
   function setArticle(id, {push=true, position=null, paragraph=null,resume=true} = {}) {
     if (!validId(id)) return;
+    window.StudyPanels?.leave();
     recordPosition(); clearTimeout(scrollTimer);
     state.current = id; state.currentKey = current().key;if(resume)state.resumeKey=state.currentKey;
     recordVisit();
@@ -243,7 +244,7 @@
   }
   function setTab(tab) {
     if (!['reading','vocabulary','sentence','translation','review'].includes(tab)) return;
-    if($('toolsDialog').open)$('toolsDialog').close();
+    window.StudyPanels?.leave();
     if(activeTab === tab)return;
     recordPosition(); closeWord(); activeTab = tab;
     if (tab === 'review') renderReview();
@@ -400,10 +401,10 @@
   $('readButton').addEventListener('click',async()=>{const wasRead=state.read.includes(state.current),oldKeys=[...state.readKeys];state.readKeys=wasRead?state.readKeys.filter(key=>key!==current().key):[...state.readKeys,current().key];state.read=state.readKeys.map(idForKey).filter(Boolean);if(!persist()){state.readKeys=oldKeys;state.read=oldKeys.map(idForKey).filter(Boolean);return;}renderDirectory();updateNavigation();experience.changed();try{await StudyState.flush();toast(wasRead?'已取消已读标记':'本篇已标记为已读');}catch(e){toast(e.message);}});
   $('focusButton').addEventListener('click',()=>{closeDirectory();closeWord();changeLayout(()=>state.settings.focus=!state.settings.focus);});
   $('themeButton').addEventListener('click',()=>{state.settings.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';applySettings();persist();});
-  $('settingsButton').addEventListener('click',()=>{closeWord();if($('toolsDialog').open)$('toolsDialog').close();applySettings();$('settingsDialog').showModal();});
-  $('aboutButton').addEventListener('click',()=>{closeDirectory();$('aboutDialog').showModal();});
-  document.querySelectorAll('.close-dialog').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
-  document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}}));
+  $('settingsButton').addEventListener('click',()=>{closeWord();applySettings();window.StudyPanels.open('settingsDialog',{root:true,opener:$('settingsButton')});});
+  $('aboutButton').addEventListener('click',()=>{closeDirectory();window.StudyPanels.open('aboutDialog',{root:true,opener:$('directoryButton')});});
+  document.querySelectorAll('.close-dialog').forEach(b=>b.addEventListener('click',()=>window.StudyPanels.close(b.closest('dialog'))));
+  document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)window.StudyPanels.close(d);}}));
   document.querySelectorAll('input[name=theme]').forEach(el=>el.addEventListener('change',()=>{state.settings.theme=el.value;applySettings();persist();}));
   function changeLayout(change){recordPosition();const anchor=state.anchorKeys[state.currentKey],position=state.positions[state.current];change();applySettings();layout?.schedule();persist();if(activeTab==='reading')restoreReadingPosition(position,anchor);}
   ['fontSize','lineHeight'].forEach(id=>$(id).addEventListener('input',()=>changeLayout(()=>state.settings[id]=Number($(id).value))));

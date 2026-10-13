@@ -212,7 +212,7 @@ if(typeof window!=='undefined'&&window.StudyCloudSync){
       return loading;
     }
     async function action(fn){try{await fn();}catch(error){show({...lastStatus,message:error.message});}}
-    $('cloudButton').addEventListener('click',()=>{dialog.showModal();boot();});
+    $('cloudButton').addEventListener('click',()=>{window.StudyPanels.open(dialog);boot();});
     $('cloudLogin').addEventListener('click',()=>action(()=>controller?controller.signIn():adapter.signIn()));
     $('cloudLogout').addEventListener('click',()=>action(()=>controller.signOut()));
     $('cloudNow').addEventListener('click',()=>action(()=>controller.syncNow()));
@@ -220,7 +220,7 @@ if(typeof window!=='undefined'&&window.StudyCloudSync){
     $('cloudKeepLocal').addEventListener('click',()=>action(()=>controller.resolve('local')));
     $('cloudKeepRemote').addEventListener('click',()=>action(()=>controller.resolve('remote')));
     $('cloudConflictExport').addEventListener('click',()=>action(async()=>{const record=await S.readSync(),conflicts=record.meta?.conflicts||[];if(!conflicts.length)return;const url=URL.createObjectURL(new Blob([JSON.stringify({format:'english-study-sync-conflict',version:1,conflicts},null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='english-study-conflict-copies.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}));
-    $('cloudBackup').addEventListener('click',()=>{dialog.close();window.StudyWorkspaceAPI?.openBackup();});
+    $('cloudBackup').addEventListener('click',()=>window.StudyWorkspaceAPI?.openBackup());
     document.addEventListener('study-local-commit',()=>controller?.schedule());
     window.addEventListener('online',()=>{if(controller)controller.schedule(0);else boot();});
     window.addEventListener('focus',()=>{if(controller)controller.wake();else boot();});

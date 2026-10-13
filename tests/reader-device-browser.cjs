@@ -44,7 +44,7 @@ async function anchorTop(p,a){return p.evaluate(a=>{const el=document.querySelec
   const before=await p.evaluate(()=>JSON.stringify(StudyState.get('learning'))),last=2;
   await p.evaluate(i=>scrollTo(0,scrollY+document.querySelector('#paragraph-'+i).getBoundingClientRect().top-document.querySelector('.topbar').getBoundingClientRect().bottom-14),last);await p.waitForTimeout(500);
   const ids=await p.locator('#marginLeft [data-margin-kind=card]').evaluateAll(bs=>bs.map(b=>b.dataset.marginId));const byId=new Map(learning.cards.map(c=>[c.id,c]));assert.equal(byId.get(ids[0]).paragraph,last);
-  assert.equal(await p.evaluate(()=>JSON.stringify(StudyState.get('learning'))),before);await p.locator('#toolsButton').click();await p.locator('#articleRecordsOpen').click();assert.equal(await p.locator('#articleRecordsBody [data-margin-kind=card]').count(),learning.cards.length);await p.locator('#articleRecordsDialog .close-dialog').click();
+  assert.equal(await p.evaluate(()=>JSON.stringify(StudyState.get('learning'))),before);await p.locator('#toolsButton').click();await p.locator('#articleRecordsOpen').click();assert.equal(await p.locator('#articleRecordsBody [data-margin-kind=card]').count(),learning.cards.length);await p.locator('#articleRecordsDialog .close-dialog').click();assert.equal(await p.locator('#toolsDialog').evaluate(d=>d.open),true);await p.locator('#toolsDialog .close-dialog').click();
   await p.evaluate(()=>scrollTo(0,0));await p.waitForTimeout(350);await p.locator('#paragraph-0 .target').first().click();await p.screenshot({path:path.join(out,'desktop-day-1536.png')});await p.locator('#closeWord').click();
  });
  const phone=await context({width:428,height:926},true,3),m=phone.p;await seed(m);

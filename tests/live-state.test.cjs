@@ -10,7 +10,7 @@ function setup(){
  node('restoreMode').value='merge';node('restorePreference').value='current';
  const context={window:null,READING_DATA:content.window.READING_DATA,StudyWorkspaceCore:C,StudyLearningCore:L,StudyExperienceCore:E,StudyPack:P,StudyToolsCore:T,StudyState:S,
   StudyLibrary:{payloads:()=>[clone(payload)],entries:()=>[],model:key=>key===data.articles[0].key?{key,sourceId:payload.id,payload:clone(payload),index:0,baseHash:C.hash(payload)}:null},
-  document:{body:node('body'),getElementById:node,querySelector:s=>s==='dialog[open]'?[...nodes.values()].find(n=>n.open):node(s),querySelectorAll:s=>s==='dialog[open]'?[...nodes.values()].filter(n=>n.open):[],addEventListener(){}},setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),URL,Blob};context.window=context;
+  document:{body:node('body'),getElementById:node,querySelector:s=>s==='dialog[open]'?[...nodes.values()].find(n=>n.open):node(s),querySelectorAll:s=>s==='dialog[open]'?[...nodes.values()].filter(n=>n.open):[],addEventListener(){}},setTimeout,clearTimeout,requestAnimationFrame:fn=>fn(),URL,Blob};context.window=context;context.StudyPanels={open:id=>{for(const n of nodes.values())if(n.open)n.close();node(typeof id==='string'?id:id.id).showModal();},leave:()=>{for(const n of nodes.values())if(n.open)n.close();},close:d=>d.close()};
  vm.runInNewContext(fs.readFileSync(__dirname+'/../workspace-ui.js','utf8'),context);
  const app={data,current:()=>data.articles[0],persist(){},toast:m=>messages.push(m),closeAux(){},navigate(){},selectedWord(){},saveCard(){},reviewChanged(){},markRead(){},refreshLearning(){},isRead:()=>false};
  const workspace=context.StudyWorkspace.create(app);context.StudyWorkspaceAPI=workspace;
