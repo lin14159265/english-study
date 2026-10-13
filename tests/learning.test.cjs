@@ -8,6 +8,12 @@ const ctx={window:{}};vm.runInNewContext(fs.readFileSync(__dirname+'/../content.
 const source=ctx.window.READING_DATA;
 const data={words:source.words,articles:source.articles.map(a=>({...a,key:`original/${a.id}`}))};
 const originalCard=i=>C.usage(data,'value',data.words.value.uses[i]);
+test('personal highlights follow saved word and sense across contexts, never another sense or a removed card',()=>{
+  const card=originalCard(0),senses=C.savedSenseKeys([card,card]);assert.equal(senses.size,1);
+  assert.ok(senses.has(C.senseKey('value','价值')));assert.ok(!senses.has(C.senseKey('value','重视')));assert.ok(!senses.has(C.senseKey('other::value','价值')));
+  assert.ok(C.savedSenseKeys([{...card,sense:'  价值  '}]).has(C.senseKey('value','价值')));
+  assert.equal(C.savedSenseKeys([]).size,0);assert.equal(C.savedSenseKeys([{wordKey:'value'},null]).size,0);
+});
 test('same lemma saves separate senses and immutable original contexts',()=>{
   const a=originalCard(0),b=originalCard(1);
   assert.equal(a.sense,'价值');assert.equal(b.sense,'重视');assert.notEqual(a.id,b.id);

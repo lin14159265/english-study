@@ -2,6 +2,10 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const Cloud=require('../cloud-sync'),Core=require('../sync-core'),W=require('../workspace-core'),L=require('../learning-core');
 const copy=x=>structuredClone(x),wait=()=>new Promise(r=>setImmediate(r));
 const fresh=()=>({state:{reader:{currentKey:'original/1',resumeKey:'original/1',readKeys:[],positionKeys:{},settings:{theme:'system',fontSize:21,lineHeight:1.95,fontFamily:'serif',highlight:true,focus:false}},learning:L.empty(),extra:W.emptyExtra()},packs:[],rollback:null});
+test('new default marker preference and first-page visit keep a new browser eligible for automatic cloud recovery',()=>{
+ const x=fresh();x.state.reader.settings.highlightMode='all';x.state.reader.visitKeys={'original/1':123};assert.equal(Cloud.meaningful(x),false);
+ x.state.reader.settings.highlightMode='saved';assert.equal(Cloud.meaningful(x),true);
+});
 function backend(initial=null){
   const db={version:initial?1:0,snapshot:copy(initial),receipts:new Map(),commits:[],beforeCommit:null,loseReceipt:false};
   db.adapter=()=>{let user={uid:'owner',email:'owner@test'},auth;

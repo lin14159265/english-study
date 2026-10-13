@@ -9,6 +9,12 @@ const copy=x=>structuredClone(x);
 const card=id=>({id,articleKey:'original/1',paragraph:0,word:'measure',wordKey:'measure',sense:'测量',context:'We measure it.',allowed:'测量',created:0});
 const pack=()=>({key:`local:${template.id}`,source:'local',payload:copy(template)});
 const anchor=(articleKey,paragraph,offset)=>Position.capture({articleKey,paragraphs:Array(6).fill('A complete sentence for testing semantic reading positions and cloud merge.'),paragraph,offset,scrollY:100,viewportOffset:90,updatedAt:1});
+test('recent reading timestamps converge across devices while distinct stable keys and old snapshots remain compatible',()=>{
+ const base=fresh(),local=fresh(),remote=fresh();base.state.reader.visitKeys={a:10};local.state.reader.visitKeys={a:20,local:30};remote.state.reader.visitKeys={a:40,remote:50};
+ for(const [l,r]of [[local,remote],[remote,local]]){const merged=S.merge(base,l,r);assert.deepEqual(merged.snapshot.state.reader.visitKeys,{...l.state.reader.visitKeys,...r.state.reader.visitKeys,a:40});assert.equal(merged.conflicts.length,0);}
+ const old=fresh();assert.equal(S.merge(null,local,old).snapshot.state.reader.visitKeys.local,30);
+ remote.state.reader.visitKeys.a=-1;assert.throws(()=>S.merge(base,local,remote),/最近阅读时间/);
+});
 test('empty cloud never deletes local learning or private packages, even with an old base',()=>{
   const local=fresh();local.state.learning.cards=[card('a')];local.packs=[pack()];
   for(const base of [null,fresh()]){const result=S.merge(base,local,null);assert.deepEqual(result.snapshot,local);assert.equal(result.conflicts.length,0);assert.equal(result.changed,false);}

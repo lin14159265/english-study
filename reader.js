@@ -26,7 +26,8 @@
     root.querySelectorAll('[data-icon-after]').forEach(el => { if (!el.querySelector('svg')) el.insertAdjacentHTML('beforeend', icon(el.dataset.iconAfter)); });
   };
   const KEY = 'english-study.reader.v1';
-  const defaults = {theme:'system',fontSize:21,lineHeight:1.95,fontFamily:'serif',highlight:true,focus:false};
+  const ReaderCore=window.StudyReaderLayoutCore;
+  const defaults = {theme:'system',fontSize:21,lineHeight:1.95,fontFamily:'serif',highlight:true,highlightMode:'all',focus:false};
   const validId = n => Number.isInteger(n) && n >= 1 && n <= data.articles.length;
   const idForKey = key => data.articles.find(a=>a.key===key)?.id;
   const articleHash = a => a.batch==='original' ? `#article-${String(a.id).padStart(2,'0')}` : `#read=${encodeURIComponent(a.key)}`;
@@ -37,7 +38,7 @@
       theme:['system','light','sepia','dark'].includes(saved.theme) ? saved.theme : defaults.theme,
       fontSize:Number.isFinite(saved.fontSize) ? Math.max(16,Math.min(28,saved.fontSize)) : defaults.fontSize,
       lineHeight:Number.isFinite(saved.lineHeight) ? Math.max(1.5,Math.min(2.5,saved.lineHeight)) : defaults.lineHeight,
-      fontFamily:saved.fontFamily === 'sans' ? 'sans' : 'serif', highlight:saved.highlight !== false, focus:saved.focus === true
+      fontFamily:saved.fontFamily === 'sans' ? 'sans' : 'serif', highlight:ReaderCore.highlightMode(saved)!=='none', highlightMode:ReaderCore.highlightMode(saved), focus:saved.focus === true
     });
   const saved = raw.settings || {};
   const state = {
@@ -54,6 +55,7 @@
   state.readKeys = Array.isArray(raw.readKeys) ? [...new Set(raw.readKeys)] : state.read.map(id=>data.articles[id-1].key);
   state.positionKeys = raw.positionKeys && typeof raw.positionKeys === 'object' ? {...raw.positionKeys} : Object.fromEntries(Object.entries(state.positions).filter(([id])=>validId(Number(id))).map(([id,v])=>[data.articles[Number(id)-1].key,v]));
   state.anchorKeys = raw.anchorKeys && typeof raw.anchorKeys === 'object' ? {...raw.anchorKeys} : {};
+  state.visitKeys = raw.visitKeys && typeof raw.visitKeys === 'object' ? {...raw.visitKeys} : {};
   function projectRecords() {
     state.current = idForKey(state.currentKey) || 1;
     state.read = state.readKeys.map(idForKey).filter(Boolean);
@@ -93,12 +95,16 @@
     button.textContent=id?`继续上次阅读 · ${data.articles[id-1].zhTitle||data.articles[id-1].title}`:'继续上次阅读 · 资料待加载';
     button.setAttribute('aria-label',button.textContent);
   }
+  function recordVisit(){
+    if(state.currentKey===current().key)state.visitKeys[state.currentKey]=Date.now();
+  }
   const flushReader=()=>{if(persist())StudyState.flush().catch(e=>toast(e.message||'保存失败，请重试。'));};
   const recordPosition = () => {
     // A temporary fallback must never acquire the missing article's saved position.
     if (!restoring && activeTab === 'reading' && state.currentKey === current().key && !$('sidebar').classList.contains('directory-open')) {
       state.positions[state.current] = state.positionKeys[state.currentKey] = Math.max(0,window.scrollY);
       const anchor=captureAnchor();if(anchor)state.anchorKeys[state.currentKey]=anchor;
+      recordVisit();
       state.resumeKey = state.currentKey;
       lastCheckpoint=Date.now();return true;
     }
@@ -111,7 +117,9 @@
     document.documentElement.style.setProperty('--font-size', `${s.fontSize}px`);
     document.documentElement.style.setProperty('--line-height', s.lineHeight);
     document.documentElement.style.setProperty('--reading-font', s.fontFamily === 'sans' ? 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' : 'Georgia,"Times New Roman",serif');
-    document.body.classList.toggle('no-highlight', !s.highlight);
+    document.body.classList.toggle('no-highlight', s.highlightMode==='none');
+    document.body.classList.toggle('saved-highlight', s.highlightMode==='saved');
+    applyWordHighlights();
     document.body.classList.toggle('focus-mode', s.focus);
     $('focusButton').setAttribute('aria-pressed', String(s.focus));
     $('focusButton').setAttribute('aria-label', s.focus ? '退出专注阅读' : '进入专注阅读');
@@ -120,8 +128,15 @@
     document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
     $('fontSize').value = s.fontSize; $('fontSizeValue').textContent = `${s.fontSize} px`;
     $('lineHeight').value = s.lineHeight; $('lineHeightValue').textContent = s.lineHeight.toFixed(2);
-    $('fontFamily').value = s.fontFamily; $('highlightWords').checked = s.highlight;
+    $('fontFamily').value = s.fontFamily; $('highlightWords').value = s.highlightMode;
     document.querySelectorAll('input[name=theme]').forEach(el => el.checked = el.value === s.theme);
+  }
+  function applyWordHighlights(){
+    const senses=learning?.savedSenseKeys?.()||new Set();
+    $('englishBody').querySelectorAll('.target').forEach(target=>{
+      const use=StudyLearningCore.resolveUse(data,target.dataset.word,{article:state.current,paragraph:Number(target.closest('[data-paragraph]').dataset.paragraph),uid:target.dataset.use,form:target.textContent});
+      target.classList.toggle('my-vocabulary',!!use&&senses.has(StudyLearningCore.senseKey(target.dataset.word,use.sense)));
+    });
   }
   function renderDirectory() {
     const query = $('articleSearch').value.trim().toLowerCase();
@@ -129,7 +144,9 @@
     const readFilter=$('readFilter').value,topic=$('topicFilter').value,date=$('dateFilter').value;
     const articles = data.articles.filter(a => (batch==='all'||a.batch===batch) && (readFilter==='all'||state.read.includes(a.id)===(readFilter==='read')) && (topic==='all'||a.topics?.includes(topic)) && (!date||a.date===date) && `${a.id} ${a.title} ${a.zhTitle} ${a.batchTitle}`.toLowerCase().includes(query));
     let lastBatch = null;
-    $('articleList').innerHTML = articles.map(a => { const heading = batch==='all'&&lastBatch!==a.batch?`<p class="batch-heading">${escape(a.batchTitle)}</p>`:''; lastBatch=a.batch; return `${heading}<a href="${articleHash(a)}" data-article="${a.id}" ${a.id === state.current ? 'aria-current="page"' : ''}><span class="article-index">${state.read.includes(a.id) ? icon('check') : String(a.id).padStart(2,'0')}</span><span><span class="article-name" lang="en">${escape(a.title)}</span><span class="article-cn">${escape(a.zhTitle)}</span></span></a>`; }).join('') || '<p class="empty-state">没有匹配的文章</p>';
+    const recent=!query&&batch==='all'&&readFilter==='all'&&topic==='all'&&!date?ReaderCore.recentArticles(data.articles,state):[];
+    const recentHTML=recent.length?`<section class="directory-recent" aria-labelledby="recentReadingsTitle"><h3 id="recentReadingsTitle">最近阅读</h3><div id="recentReadings">${recent.map(({key,article:a})=>a?`<a href="${articleHash(a)}" data-recent-key="${escape(key)}" ${key===state.currentKey?'aria-current="page"':''}><span><span class="article-name" lang="en">${escape(a.title)}</span><span class="article-cn">${escape(a.zhTitle)}</span></span></a>`:`<div class="recent-unavailable"><span>文章暂不可用 · 历史位置已保留</span><small>${escape(key)}</small></div>`).join('')}</div></section><h3 class="directory-all-heading">全部文章</h3>`:'';
+    $('articleList').innerHTML = recentHTML+(articles.map(a => { const heading = batch==='all'&&lastBatch!==a.batch?`<p class="batch-heading">${escape(a.batchTitle)}</p>`:''; lastBatch=a.batch; return `${heading}<a href="${articleHash(a)}" data-article="${a.id}" ${a.id === state.current ? 'aria-current="page"' : ''}><span class="article-index">${state.read.includes(a.id) ? icon('check') : String(a.id).padStart(2,'0')}</span><span><span class="article-name" lang="en">${escape(a.title)}</span><span class="article-cn">${escape(a.zhTitle)}</span></span></a>`; }).join('') || '<p class="empty-state">没有匹配的文章</p>');
     $('readCount').textContent = `${state.read.length} / ${data.articles.length} 已读`;
   }
   function closeWord(returnFocus = false) { const wasOpen = !$('wordPopover').hidden; $('wordPopover').hidden = true; selectedWord = null; layout?.wordClosed(); if (returnFocus && wasOpen && wordTrigger?.isConnected) wordTrigger.focus({preventScroll:true}); }
@@ -143,7 +160,8 @@
     if (returnFocus && wasOpen) $('directoryButton').focus({preventScroll:true});
   }
   function openDirectory() {
-    if(scrollTimer){clearTimeout(scrollTimer);scrollTimer=null;if(recordPosition())flushReader();}
+    if(scrollTimer){clearTimeout(scrollTimer);scrollTimer=null;if(recordPosition())flushReader();}renderDirectory();
+    if($('articleList').querySelector('#recentReadings'))$('articleList').scrollTop=0;
     closeWord(); $('sidebar').classList.add('directory-open'); $('sidebarBackdrop').hidden = false;
     $('directoryButton').setAttribute('aria-expanded','true');
     $('sidebar').setAttribute('role','dialog'); $('sidebar').setAttribute('aria-modal','true');
@@ -166,6 +184,7 @@
     $('articleNumber').textContent = `第 ${a.id} 篇 / ${data.articles.length} 篇`;
     $('articleMeta').textContent = `${a.wordCount} 词 · ${a.words.length} 个目标词 · 约 ${Math.max(1,Math.ceil(a.wordCount / 100))} 分钟${a.batch!=='original'?` · ${a.batchTitle}`:''}`;
     $('englishBody').innerHTML = a.paragraphs.map((p,i) => `<div class="paragraph" id="paragraph-${i}" data-paragraph="${i}"><p>${p}</p><button class="paragraph-translate" data-translate="${i}" aria-expanded="false" aria-controls="inline-translation-${i}" aria-label="查看第 ${i+1} 段译文">译</button><button class="paragraph-study text-button" data-study-paragraph="${i}" aria-label="选择第 ${i+1} 段的句子练习">选句</button><p class="inline-translation" id="inline-translation-${i}" lang="zh-CN" hidden>${escape(a.translations[i])}</p></div>`).join('');
+    applyWordHighlights();
     $('translationTitle').textContent = a.zhTitle;
     $('translationBody').innerHTML = a.translations.map((p,i) => `<div class="translation-paragraph"><span class="number">${String(i+1).padStart(2,'0')}</span><div><p>${escape(p)}</p><button class="text-button" data-jump="${i}" data-article="${a.id}">返回这一段英文</button></div></div>`).join('');
     $('wordSearch').value = '';
@@ -193,6 +212,7 @@
     if (!validId(id)) return;
     recordPosition(); clearTimeout(scrollTimer);
     state.current = id; state.currentKey = current().key;if(resume)state.resumeKey=state.currentKey;
+    recordVisit();
     activeTab = 'reading';
     renderArticle(); renderTabs(); closeDirectory(); flushReader();
     if (push) history.pushState(null,'',articleHash(current()));
@@ -204,6 +224,7 @@
     if(id&&!remote){setArticle(id);return;}
     if(!remote)recordPosition();clearTimeout(scrollTimer);
     state.currentKey=state.resumeKey=key;activeTab='reading';projectRecords();renderArticle();renderTabs();closeDirectory();
+    if(!remote)recordVisit();
     if(!remote)flushReader();
     history[remote?'replaceState':'pushState'](null,'',id?articleHash(current()):`#read=${encodeURIComponent(key)}`);
     restoreReadingPosition(id?state.positions[state.current]:0,id?state.anchorKeys[key]:null);
@@ -285,7 +306,7 @@
     else { setTab('reading'); requestAnimationFrame(()=>requestAnimationFrame(()=>$(`paragraph-${paragraph}`)?.scrollIntoView({block:'start'}))); }
   }
   learning = StudyLearning.create({data,current,legacy:state.review,toast,
-    changed:()=>{renderVocabulary();if(selectedWord)updateSaveWordButton();experience?.changed();},navigate:(id,p)=>{if(experience)experience.origin(data.articles[id-1].key,p,{activity:'review-list',view:'words'});else jump(id,p);},
+    changed:()=>{applyWordHighlights();renderVocabulary();if(selectedWord)updateSaveWordButton();experience?.changed();},navigate:(id,p)=>{if(experience)experience.origin(data.articles[id-1].key,p,{activity:'review-list',view:'words'});else jump(id,p);},
     questionCount:()=>workspace?.wrongCount()||0,renderQuestions:()=>workspace?.renderWrongQuestions()||'',undoQuestion:()=>workspace?.undoQuestion(),removedQuestionCount:()=>workspace?.removedQuestionCount()||0,
     openSentence:snapshot=>{
       experience?.remember({activity:'review-list',view:'sentences'});
@@ -305,7 +326,7 @@
   experience=StudyExperience.create({data,current,toast,closeAux:()=>{closeWord();closeDirectory();},captureReader,restoreReader,
     navigate:(key,p)=>{const id=idForKey(key);if(id)setArticle(id,{position:0,paragraph:p});},
     practiceSentence:s=>{const id=idForKey(s.articleKey);if(id!==state.current)setArticle(id,{position:0});learning.articleChanged(s.id);setTab('sentence');$('sentenceOwn').focus();},
-    openReview:view=>{setTab('review');learning.setReviewView(view||'words');},refreshLearning:()=>{learning.reloadState();renderVocabulary();renderTabs();},isRead:()=>state.read.includes(state.current),
+    openReview:view=>{setTab('review');learning.setReviewView(view||'words');},refreshLearning:()=>{learning.reloadState();applyWordHighlights();renderVocabulary();renderTabs();},isRead:()=>state.read.includes(state.current),
     completeAndNext:async()=>{const handled=await workspace.finishAndNext();if(!handled){markRead();await StudyState.flush();if(validId(state.current+1))setArticle(state.current+1,{position:0});else toast('已读到最后一篇，可继续复习或导入新资料。');}}
   });window.StudyExperienceAPI=experience;
   layout=window.StudyReaderLayout?.create({data,current,toast,closeWord,showWord,
@@ -316,7 +337,7 @@
   paintIcons();
   $('articleSearch').addEventListener('input',renderDirectory);
   $('batchFilter').addEventListener('change',renderDirectory);['readFilter','topicFilter','dateFilter'].forEach(id=>$(id).addEventListener('change',renderDirectory));$('clearFilters').addEventListener('click',()=>{$('articleSearch').value='';$('batchFilter').value='all';$('readFilter').value='all';$('topicFilter').value='all';$('dateFilter').value='';renderDirectory();});
-  $('articleList').addEventListener('click',e=>{ const link=e.target.closest('[data-article]'); if (link) {e.preventDefault();setArticle(Number(link.dataset.article));} });
+  $('articleList').addEventListener('click',e=>{ const recent=e.target.closest('[data-recent-key]');if(recent){e.preventDefault();const id=idForKey(recent.dataset.recentKey);if(id)setArticle(id);return;}const link=e.target.closest('[data-article]'); if (link) {e.preventDefault();setArticle(Number(link.dataset.article));} });
   $('directoryButton').addEventListener('click',openDirectory);
   $('continueReading')?.addEventListener('click',()=>continueReading());
   $('backToReading')?.addEventListener('click',()=>setTab('reading'));
@@ -387,7 +408,7 @@
   function changeLayout(change){recordPosition();const anchor=state.anchorKeys[state.currentKey],position=state.positions[state.current];change();applySettings();layout?.schedule();persist();if(activeTab==='reading')restoreReadingPosition(position,anchor);}
   ['fontSize','lineHeight'].forEach(id=>$(id).addEventListener('input',()=>changeLayout(()=>state.settings[id]=Number($(id).value))));
   $('fontFamily').addEventListener('change',()=>changeLayout(()=>state.settings.fontFamily=$('fontFamily').value));
-  $('highlightWords').addEventListener('change',()=>{state.settings.highlight=$('highlightWords').checked;applySettings();persist();});
+  $('highlightWords').addEventListener('change',()=>{state.settings.highlightMode=ReaderCore.highlightMode({highlightMode:$('highlightWords').value});state.settings.highlight=state.settings.highlightMode!=='none';applySettings();persist();});
   $('resetSettings').addEventListener('click',()=>{changeLayout(()=>state.settings={...defaults});toast('显示设置已恢复默认');});
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(state.settings.theme==='system')applySettings();});
   document.addEventListener('keydown',e=>{
@@ -415,7 +436,7 @@
   window.addEventListener('popstate',followHash);
   window.addEventListener('hashchange',()=>{const id=hashArticle();if(id!==state.current||(id&&data.articles[id-1].key!==state.currentKey))followHash();});
   if(hashArticle()){state.current=hashArticle();state.currentKey=current().key;}else if(pendingHashKey()){state.currentKey=pendingHashKey();projectRecords();}else {state.currentKey=state.resumeKey;projectRecords();}
-  applySettings();renderArticle();renderTabs();
+  recordVisit();applySettings();renderArticle();renderTabs();
   if(location.hash.startsWith('#zh-'))setTab('translation');
   else restoreReadingPosition(state.positions[state.current]);
   if(state.currentKey===current().key) history.replaceState(null,'',articleHash(current()));
@@ -437,8 +458,9 @@
     state.readKeys=Array.isArray(next.readKeys)?[...next.readKeys]:(next.read||[]).filter(validId).map(id=>data.articles[id-1].key);
     state.positionKeys=next.positionKeys?{...next.positionKeys}:Object.fromEntries(Object.entries(next.positions||{}).filter(([id])=>validId(Number(id))).map(([id,v])=>[data.articles[Number(id)-1].key,v]));
     state.anchorKeys=next.anchorKeys&&typeof next.anchorKeys==='object'?{...next.anchorKeys}:{};
+    state.visitKeys=next.visitKeys&&typeof next.visitKeys==='object'?{...next.visitKeys}:{};
     state.resumeKey=next.resumeKey||next.currentKey||visibleKey;
-    projectRecords();applySettings();learning.reloadState();
+    projectRecords();applySettings();learning.reloadState();applyWordHighlights();
     if(detail.packs!==undefined)await StudyLibrary.reload(detail.packs,{token:detail.libraryToken});
     renderDirectory();renderVocabulary();renderTabs();updateNavigation();updateContinue();workspace.reloadState();experience.reloadState();layout?.refresh(true);
     if(detail.followResume)continueReading({remote:true});
@@ -447,6 +469,7 @@
   StudyLibrary.attach({toast,closeAux:()=>{closeWord();closeDirectory();},beforeChange:()=>{recordPosition();persist();},onChange:({external=false}={})=>{
     const wasMissing=renderedKey!==state.currentKey,oldVersion=renderedVersion;
     projectRecords();
+    if(wasMissing&&state.currentKey===current().key&&!external)recordVisit();
     learning.libraryChanged({external});
     workspace.changed();
     updateLibraryControls(); renderArticle(); renderTabs();updateContinue(); if(!external)persist();

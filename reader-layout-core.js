@@ -1,9 +1,22 @@
-/* Read-only projections of existing personal records. No new persistence format. */
+/* Read-only projections and display preferences for personal reading records. */
 (function(root,factory){
   const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.StudyReaderLayoutCore=api;
 })(typeof window!=='undefined'?window:globalThis,function(){
   'use strict';
   const list=v=>Array.isArray(v)?v:[];
+  function highlightMode(settings={}){
+    return ['all','saved','none'].includes(settings.highlightMode)?settings.highlightMode:settings.highlight===false?'none':'all';
+  }
+  function recentArticles(articles,reader={},limit=5){
+    const times=new Map();
+    for(const [key,anchor] of Object.entries(reader.anchorKeys||{}))if(Number.isFinite(anchor?.updatedAt)&&anchor.updatedAt>=0)times.set(key,anchor.updatedAt);
+    for(const [key,at] of Object.entries(reader.visitKeys||{}))if(Number.isFinite(at)&&at>=0)times.set(key,Math.max(times.get(key)||0,at));
+    // Old pixel-only records have no visit time. Preserve the known resume entry
+    // without inventing a chronological order for the remaining old positions.
+    if(typeof reader.resumeKey==='string'&&reader.resumeKey&&!times.has(reader.resumeKey))times.set(reader.resumeKey,0);
+    const byKey=new Map(articles.map(a=>[a.key,a]));
+    return [...times].sort(([ak,at],[bk,bt])=>bt-at||ak.localeCompare(bk)).slice(0,limit).map(([key,at])=>({key,at,article:byKey.get(key)||null}));
+  }
   function records(articleKey,learning={},extra={}){
     const cards=list(learning.cards).filter(r=>r.articleKey===articleKey);
     const notes=list(learning.notes).filter(r=>r.articleKey===articleKey);
@@ -40,5 +53,5 @@
     const top=Math.max(topEdge,Math.min(bottomEdge-height,lower?r.bottom+edge:r.top-edge-height));
     return {left,top,width:panelWidth,maxHeight:height};
   }
-  return {records,annotationLocation,nearbyCards,overlayPlacement};
+  return {highlightMode,recentArticles,records,annotationLocation,nearbyCards,overlayPlacement};
 });

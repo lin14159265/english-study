@@ -16,7 +16,7 @@
     if(r.readKeys?.length||r.review?.length||Object.values(r.positionKeys||{}).some(n=>n>0)||Object.values(r.anchorKeys||{}).some(a=>a.paragraph>0||a.offset>0))return true;
     for(const [k,v]of Object.entries(l))if(!['version'].includes(k)&&(Array.isArray(v)?v.length:v&&typeof v==='object'?Object.keys(v).length:v))return true;
     for(const [k,v]of Object.entries(x))if(k!=='lastBackupAt'&&(Array.isArray(v)?v.length:v&&typeof v==='object'?Object.keys(v).length:v))return true;
-    const defaults={theme:'system',fontSize:21,lineHeight:1.95,fontFamily:'serif',highlight:true,focus:false};
+    const defaults={theme:'system',fontSize:21,lineHeight:1.95,fontFamily:'serif',highlight:true,highlightMode:'all',focus:false};
     return !!r.settings&&Object.entries(r.settings).some(([k,v])=>defaults[k]!==v);
   }
   function create({store:S,core:C,adapter:A,allowedUid,onStatus=()=>{},followResume=()=>false,online=()=>true,clock=()=>Date.now(),delay=5000,slowAfter=20000,autoSchedule=true}){

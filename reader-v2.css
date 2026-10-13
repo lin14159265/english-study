@@ -23,6 +23,7 @@
 .reader-v2 .target{font-weight:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted var(--accent);text-underline-offset:6px;text-decoration-thickness:1px}
 .reader-v2 .target:hover,.reader-v2 .target:focus-visible{color:var(--accent)}
 .reader-v2.no-highlight .target{text-decoration:none}
+.reader-v2.saved-highlight .target:not(.my-vocabulary){text-decoration:none}
 .reader-v2 .paragraph-translate{left:calc(100% + 22px);top:2px;min-height:36px;min-width:28px;font:15px/1.5 system-ui,sans-serif;padding:3px;border:0;border-radius:0;color:var(--accent);opacity:1}
 .reader-v2 .paragraph-study{display:none}
 .reader-v2 .inline-translation{border-left:1px solid var(--border);margin:24px 0 0!important;padding:0 0 0 18px!important;background:transparent;font:17px/1.9 system-ui,'Microsoft YaHei',sans-serif;color:var(--muted)}
@@ -37,6 +38,13 @@
 .reader-v2 .backdrop{z-index:70;background:#0003}
 .reader-v2 .directory-continue{display:block;margin:0 22px 20px;max-width:310px;text-align:left;line-height:1.7;overflow-wrap:anywhere;font-size:13px}
 .reader-v2 #articleList{padding-bottom:24px}
+.reader-v2 .directory-recent{padding-bottom:14px;margin-bottom:16px;border-bottom:1px solid var(--border)}
+.reader-v2 .directory-recent h3,.reader-v2 .directory-all-heading{font:500 12px/1.6 system-ui,sans-serif;color:var(--muted);margin:0 12px 8px}
+.reader-v2 #recentReadings a{padding:10px 12px;min-height:44px;overflow-wrap:anywhere}
+.reader-v2 #recentReadings .article-name{font-size:15px}
+.reader-v2 #recentReadings .article-cn{font-size:11px;margin-top:4px}
+.reader-v2 .recent-unavailable{padding:10px 12px;color:var(--muted);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.reader-v2 .recent-unavailable small{display:block;font-size:10px}
 .reader-v2 .sidebar .brand>span{font-size:25px;font-weight:400}
 .reader-v2 .margin-left{position:absolute;left:48px;top:225px;width:194px;font-size:15px;color:var(--muted)}
 .reader-v2 .margin-section h2,.reader-v2 .margin-note h2{font:400 15px/1.5 system-ui,sans-serif;margin:0 0 14px;color:var(--muted)}
