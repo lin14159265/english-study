@@ -27,6 +27,7 @@
     const errors=[];if(!object(s)||!object(s.reader)||!object(s.learning)||!object(s.extra))return ['备份缺少阅读、学习或扩展状态。'];
     const r=s.reader,l=s.learning;
     if(r.resumeKey!==undefined&&typeof r.resumeKey!=='string')errors.push('续读文章键无效。');
+    if(r.visitKeys!==undefined&&(!object(r.visitKeys)||Object.values(r.visitKeys).some(n=>!Number.isFinite(n)||n<0)))errors.push('最近阅读时间无效。');
     if(r.readKeys!==undefined&&(!Array.isArray(r.readKeys)||r.readKeys.some(k=>typeof k!=='string')))errors.push('已读文章键无效。');
     if(r.positionKeys!==undefined&&(!object(r.positionKeys)||Object.values(r.positionKeys).some(n=>!Number.isFinite(n)||n<0)))errors.push('阅读位置无效。');
     if(r.anchorKeys!==undefined&&(!object(r.anchorKeys)||Object.entries(r.anchorKeys).some(([key,a])=>!object(a)||a.version!==1||a.articleKey!==key||typeof a.contentVersion!=='string'||!Number.isInteger(a.paragraph)||a.paragraph<0||!Number.isInteger(a.offset)||a.offset<0||typeof a.before!=='string'||typeof a.after!=='string'||a.before.length>500||a.after.length>500||!Number.isFinite(a.scrollY)||a.scrollY<0||!Number.isFinite(a.viewportOffset)||!Number.isFinite(a.updatedAt))))errors.push('语义阅读位置无效。');
@@ -112,6 +113,7 @@
     a.reader.readKeys=[...new Set([...(a.reader.readKeys||[]),...(b.reader.readKeys||[])])];
     a.reader.positionKeys=mergeMap(a.reader.positionKeys||{},b.reader.positionKeys||{},prefer,conflicts,'阅读位置');
     if(a.reader.anchorKeys!==undefined||b.reader.anchorKeys!==undefined)a.reader.anchorKeys=mergeMap(a.reader.anchorKeys||{},b.reader.anchorKeys||{},prefer,conflicts,'语义阅读位置');
+    if(a.reader.visitKeys!==undefined||b.reader.visitKeys!==undefined)a.reader.visitKeys=Object.fromEntries([...new Set([...Object.keys(a.reader.visitKeys||{}),...Object.keys(b.reader.visitKeys||{})])].map(key=>[key,Math.max(a.reader.visitKeys?.[key]||0,b.reader.visitKeys?.[key]||0)]));
     if(prefer==='backup'){a.reader.settings=clone(b.reader.settings||{});a.reader.currentKey=b.reader.currentKey;a.reader.resumeKey=b.reader.resumeKey||b.reader.currentKey;a.learning.guessMode=b.learning.guessMode;}
     for(const k of ['difficulty','verifications'])a.extra[k]=mergeMap(a.extra[k]||{},b.extra[k]||{},prefer,conflicts,k);
     for(const k of ['pendingSentences','removedPending','lookupWords','reviewRounds'])a.extra[k]=mergeList(a.extra[k]||[],b.extra[k]||[],prefer,conflicts,k);

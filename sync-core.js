@@ -68,6 +68,9 @@
       if(b!==missing)entry.base=clone(b);if(l!==missing)entry.local=clone(l);if(r!==missing)entry.remote=clone(r);conflicts.push(entry);return clone(l);
     }
     function walk(b,l,r,path){
+      // Visit times are monotonic metadata, not editable learning content. Concurrent
+      // visits to the same stable article converge without opening a conflict dialog.
+      if(path.length===4&&path[0]==='state'&&path[1]==='reader'&&path[2]==='visitKeys'&&Number.isFinite(l)&&Number.isFinite(r))return Math.max(l,r);
       if(equal(l,r))return clone(l);
       if(b!==missing&&equal(l,b))return clone(r);
       if(b!==missing&&equal(r,b))return clone(l);

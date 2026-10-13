@@ -3,6 +3,14 @@ const C=require('../workspace-core'),L=require('../learning-core'),P=require('..
 const ctx={window:{}};vm.runInNewContext(fs.readFileSync(__dirname+'/../content.js','utf8'),ctx);
 const base=C.originalPack(ctx.window.READING_DATA),example=JSON.parse(fs.readFileSync(__dirname+'/../downloads/pack-template.json','utf8'));
 const backup=()=>({format:'english-study-backup',version:1,base:C.clone(base),packs:[C.clone(example)],state:{reader:{currentKey:'original/1',readKeys:['original/1'],positionKeys:{'original/1':200},settings:{theme:'dark'}},learning:L.empty(),extra:C.emptyExtra()}});
+test('version 1 backups retain personal marker mode and merge recent visits without changing article positions',()=>{
+ const a=backup(),b=backup();a.state.reader.visitKeys={'original/1':200};b.state.reader.visitKeys={'original/1':100,'missing/story':300};b.state.reader.settings.highlightMode='saved';
+ assert.ok(C.validateBackup(b).ok);const merged=C.restorePlan(a,b,'merge','backup').backup;
+ assert.deepEqual(merged.state.reader.visitKeys,{'original/1':200,'missing/story':300});assert.equal(merged.state.reader.settings.highlightMode,'saved');assert.equal(merged.state.reader.positionKeys['original/1'],200);assert.equal(merged.version,1);
+ const old=backup();assert.ok(C.validateBackup(old).ok);assert.equal(C.restorePlan(merged,old).backup.state.reader.visitKeys['missing/story'],300);
+ const bad=backup();bad.state.reader.visitKeys={x:-1};assert.equal(C.validateBackup(bad).ok,false);
+ b.base.articles[0].zhTitle='独立副本';const copied=C.independentCopies(a,b);assert.ok(Object.keys(copied.state.reader.visitKeys).some(k=>/^original-copy-.*\/article-01$/.test(k)));assert.ok(C.validateBackup(copied).ok);
+});
 test('original snapshot is a validated pure-text package with stable original keys',()=>{
   const r=P.validate(base);assert.equal(r.ok,true);const mapped=C.remapOriginal(r.compiled);
   assert.equal(mapped.articles[0].key,'original/1');assert.ok(mapped.words.value);assert.ok(!mapped.articles[0].paragraphs[0].includes('data-word="original-baseline::'));

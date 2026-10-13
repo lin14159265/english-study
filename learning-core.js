@@ -48,6 +48,8 @@
     if(paragraph!==null)return uses.find(u=>u.article===article && u.paragraph===paragraph && (!form || u.form.toLowerCase()===form.toLowerCase())) || null;
     return uses.find(u=>u.article===article) || uses[0] || null;
   }
+  const senseKey=(wordKey,sense)=>JSON.stringify([wordKey,String(sense).trim().replace(/\s+/g,' ')]);
+  function savedSenseKeys(cards){return new Set((Array.isArray(cards)?cards:[]).filter(c=>typeof c?.wordKey==='string'&&typeof c?.sense==='string').map(c=>senseKey(c.wordKey,c.sense)));}
   function articleSentences(article) {
     return article.plain.flatMap((p,paragraph)=>{
       const supplied = article.sentenceTranslations?.[paragraph];
@@ -104,7 +106,7 @@
     state.notes = [...state.notes.filter(n=>n.id!==entry.id),note];
     return true;
   }
-  const api = {sentences,contextFor,usage,resolveUse,articleSentences,locate,empty,load,migrate,rate,saveNote,categories};
+  const api = {sentences,contextFor,usage,resolveUse,senseKey,savedSenseKeys,articleSentences,locate,empty,load,migrate,rate,saveNote,categories};
   if (typeof module!=='undefined' && module.exports) module.exports=api;
   else root.StudyLearningCore=api;
 })(typeof window!=='undefined' ? window : globalThis);

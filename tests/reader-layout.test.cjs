@@ -1,4 +1,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),C=require('../reader-layout-core');
+test('three highlight modes retain legacy all/none defaults and valid saved mode',()=>{
+  assert.equal(C.highlightMode({}), 'all');assert.equal(C.highlightMode({highlight:false}), 'none');
+  assert.equal(C.highlightMode({highlightMode:'saved',highlight:true}),'saved');assert.equal(C.highlightMode({highlightMode:'invalid',highlight:false}),'none');
+});
+test('recent articles use stable keys, deduplicate checkpoints, retain missing sources and never invent legacy dates',()=>{
+  const articles=[{id:99,key:'a'},{id:1,key:'b'}],reader={resumeKey:'pixel-only',visitKeys:{a:20,b:30,missing:40},anchorKeys:{a:{updatedAt:25},old:{updatedAt:10}},positionKeys:{unordered:123}};
+  const rows=C.recentArticles(articles,reader);assert.deepEqual(rows.map(r=>r.key),['missing','b','a','old','pixel-only']);assert.equal(rows[0].article,null);assert.equal(rows[2].article.id,99);assert.equal(rows[2].at,25);assert.deepEqual(reader.visitKeys,{a:20,b:30,missing:40});
+  assert.deepEqual(C.recentArticles(articles,{resumeKey:'a',positionKeys:{b:42}}).map(r=>r.key),['a']);
+  assert.equal(C.recentArticles(articles,{visitKeys:{a:NaN,b:-1}}).length,0);
+});
 test('margin projections are isolated by stable article key and never create or mutate personal records',()=>{
   const learning={cards:[{id:'c',articleKey:'pack/a'},{id:'other',articleKey:'pack/b'}],notes:[{id:'n',articleKey:'pack/a',own:'我的理解'}]},extra={pendingSentences:[{id:'p',articleKey:'pack/a',status:'pending',reason:'否定句'},{id:'done',articleKey:'pack/a',status:'done',reason:'已完成'}]};
   const before=JSON.stringify({learning,extra}),r=C.records('pack/a',learning,extra);
