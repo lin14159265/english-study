@@ -8,6 +8,29 @@ const ctx={window:{}};vm.runInNewContext(fs.readFileSync(__dirname+'/../content.
 const source=ctx.window.READING_DATA;
 const data={words:source.words,articles:source.articles.map(a=>({...a,key:`original/${a.id}`}))};
 const originalCard=i=>C.usage(data,'value',data.words.value.uses[i]);
+test('review search distinguishes actual senses rather than matching every allowed dictionary meaning',()=>{
+  const records=[originalCard(0),originalCard(1)],before=JSON.stringify(records);
+  assert.deepEqual(C.filterReview(records,{query:'value 重视'}),[records[1]]);
+  assert.deepEqual(C.filterReview(records,{query:'价值'}),[records[0]]);
+  assert.equal(JSON.stringify(records),before);assert.equal(C.filterReview(records)[0],records[0]);
+});
+test('review search supports case, full-width characters and multiple terms across snapshot fields',()=>{
+  const record={word:'Value',form:'values',sense:'价值',articleTitle:'A Historic Workshop',context:'An old sentence.'};
+  assert.equal(C.queryMatches('Value 价值','ＶＡＬＵＥ\n价值'),true);
+  assert.deepEqual(C.filterReview([record],{query:'WORKSHOP 价值 old'}),[record]);
+  assert.deepEqual(C.filterReview([record],{query:'missing 价值'}),[]);
+});
+test('unresolved review filters preserve missing-source notes and never change resolved flags',()=>{
+  const notes=[{en:'A sentence.',own:'忽略了否定',categories:['否定'],articleKey:'removed/a',resolved:false},{en:'B.',own:'已理解',resolved:true}],before=JSON.stringify(notes);
+  assert.deepEqual(C.filterReview(notes,{query:'否定',unresolved:true}),[notes[0]]);
+  assert.equal(C.filterReview(notes,{unresolved:true}).length,1);assert.equal(C.filterReview(notes).length,2);
+  assert.equal(JSON.stringify(notes),before);assert.deepEqual(C.filterReview(undefined),[]);
+});
+test('wrong-question search covers question choices, explanation and evidence in historical snapshots',()=>{
+  const question={question:{prompt:'Why?',choices:[{text:'Use a portable tool'}],explanation:'The team saved energy.',evidence:[{quote:'They measured power.'}]},resolved:false};
+  assert.deepEqual(C.filterReview([question],{query:'PORTABLE power energy',unresolved:true}),[question]);
+  assert.equal(C.filterReview([question],{query:'absent'}).length,0);
+});
 test('personal highlights follow saved word and sense across contexts, never another sense or a removed card',()=>{
   const card=originalCard(0),senses=C.savedSenseKeys([card,card]);assert.equal(senses.size,1);
   assert.ok(senses.has(C.senseKey('value','价值')));assert.ok(!senses.has(C.senseKey('value','重视')));assert.ok(!senses.has(C.senseKey('other::value','价值')));
