@@ -100,7 +100,7 @@ test('a timeout retains the exact durable flight, releases the cycle and permits
  const s=store(fresh(),'owner'),b=backend(),adapter=b.adapter(),commit=adapter.commit;let fail=true;
  adapter.commit=request=>{if(fail){fail=false;return Promise.reject(Object.assign(Error('wait timed out'),{code:'sync-timeout'}));}return commit(request);};
  s.change(r=>r.state.extra.note='retain');const {c}=await controller(s,{adapter:()=>adapter});t.after(()=>c.close());
- await c.syncNow();const id=s.r.meta.flight.operationId;assert.equal(c.status().phase,'offline');assert.equal(c.diagnostics().running,false);assert.equal(s.r.pending.length,1);
+ await c.syncNow();const id=s.r.meta.flight.operationId;assert.equal(c.status().phase,'timeout');assert.equal(c.diagnostics().running,false);assert.equal(s.r.pending.length,1);
  await c.syncNow();assert.equal(b.commits[0].operationId,id);assert.equal(c.status().phase,'synced');assert.equal(s.r.pending.length,0);
 });
 test('idle version checks retain a distinct acknowledged status while waiting for the server',async t=>{
@@ -112,4 +112,75 @@ test('late network failure after logout cannot replace the signed-out state',asy
  const s=store(fresh(),'owner'),b=backend(),adapter=b.adapter();let reject;adapter.pull=()=>new Promise((_,no)=>reject=no);
  const {c}=await controller(s,{adapter:()=>adapter});t.after(()=>c.close());const pending=c.syncNow();await wait();await c.signOut();
  reject(Object.assign(Error('late timeout'),{code:'sync-timeout'}));await pending;assert.equal(c.status().phase,'signed-out');
+});
+test('new local edits immediately withdraw the previous receipt while retaining its time',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),{c}=await controller(s,b);t.after(()=>c.close());await drain(c);
+ const at=c.status().lastConfirmedAt;c.localChanged();assert.equal(c.status().phase,'pending');assert.equal(c.status().localDirty,true);assert.equal(c.status().lastConfirmedAt,at);
+ s.change(r=>r.state.extra.newer='local');c.localChanged(true);assert.equal(c.status().phase,'pending');await drain(c);
+ assert.equal(c.status().phase,'synced');assert.equal(c.status().localDirty,false);assert.equal(b.snapshot.state.extra.newer,'local');
+});
+test('edits during an idle cloud check remove acknowledged status and are included before success',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),a=b.adapter(),{c}=await controller(s,{adapter:()=>a});t.after(()=>c.close());await drain(c);
+ const pull=a.pull;let finish;a.pull=()=>new Promise(resolve=>finish=resolve);const checking=c.syncNow();await wait();assert.equal(c.status().phase,'checking');
+ s.change(r=>r.state.extra.newer='during check');c.localChanged(true);assert.equal(c.status().phase,'syncing');assert.equal(c.status().localDirty,true);
+ finish(await pull());await checking;assert.equal(c.status().phase,'synced');assert.equal(b.snapshot.state.extra.newer,'during check');
+});
+test('permission, resource exhaustion and expired authentication keep exact flights and allow explicit retry',async t=>{
+ for(const [code,phase] of [['permission-denied','error'],['resource-exhausted','quota'],['unauthenticated','auth-required']]){
+  const s=store(fresh(),'owner'),b=backend(),a=b.adapter(),commit=a.commit;let reject=true;
+  a.commit=value=>reject?Promise.reject(Object.assign(Error('injected'),{code})):commit(value);
+  s.change(r=>r.state.extra.private='retained');const {c}=await controller(s,{adapter:()=>a});t.after(()=>c.close());await c.syncNow();
+  const id=s.r.meta.flight.operationId;assert.equal(c.status().phase,phase);assert.equal(c.status().autoRetry,false);assert.equal(s.r.pending.length,1);
+  reject=false;await drain(c);assert.equal(c.status().phase,'synced');assert.equal(b.commits[0].operationId,id);
+ }
+});
+test('network failures use backoff even if another change requested another cycle',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),a=b.adapter();let c;
+ ({c}=await controller(s,{adapter:()=>a},{autoSchedule:true}));t.after(()=>c.close());await drain(c);
+ a.pull=async()=>{c.localChanged(true);throw Object.assign(Error('unreachable'),{code:'unavailable'});};await c.syncNow();
+ assert.equal(c.status().phase,'network-error');const d=c.diagnostics();assert.equal(d.running,false);assert.equal(d.lastFailureStage,'cloud-head');
+ assert.ok(d.nextRetryAt-Date.now()<=5000&&d.nextRetryAt-Date.now()>4000);
+});
+test('a failed remote listener is recreated on recovery without parallel listeners',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),a=b.adapter();let callback,subscriptions=0,stops=0;
+ a.subscribe=fn=>{subscriptions++;callback=fn;return()=>stops++;};
+ const {c}=await controller(s,{adapter:()=>a});t.after(()=>c.close());await drain(c);assert.equal(subscriptions,1);
+ callback({error:Object.assign(Error('listener unavailable'),{code:'unavailable'})});assert.equal(c.status().phase,'network-error');assert.equal(stops,1);
+ await drain(c);assert.equal(subscriptions,2);assert.equal(c.status().phase,'synced');
+});
+test('an acknowledged snapshot read before a newer local commit cannot show cloud success',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),{c}=await controller(s,b);t.after(()=>c.close());await drain(c);
+ const read=s.readSync;let reads=0;s.status=()=>({phase:'saved',token:s.r.token});
+ s.readSync=async()=>{const value=await read();if(++reads===3){s.change(r=>r.state.extra.latest='newer commit');c.localChanged(true);}return value;};
+ await c.syncNow();assert.equal(c.status().phase,'pending');await drain(c);assert.equal(b.snapshot.state.extra.latest,'newer commit');assert.equal(c.status().phase,'synced');
+});
+test('saved memory recovery resumes a paused local failure without treating it as permission failure',async t=>{
+ const remote=fresh();remote.state.extra.cloudOnly='remote';const s=store(fresh(),'owner'),b=backend(remote);s.breakUI();s.change(r=>r.state.extra.saved='local');
+ const {c}=await controller(s,b,{autoSchedule:true});t.after(()=>c.close());await c.syncNow();assert.equal(c.status().phase,'local-pending');
+ s.repairUI();c.localReady();assert.equal(c.status().phase,'pending');assert.ok(c.diagnostics().nextRetryAt);await drain(c);assert.equal(c.status().phase,'synced');
+});
+test('failed startup local storage can be retried without a logout or new backup bypass',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),flush=s.flush;let broken=true;s.flush=()=>broken?Promise.reject(Error('startup local failure')):flush();
+ const {c}=await controller(s,b);t.after(()=>c.close());assert.equal(c.status().phase,'error');broken=false;await drain(c);assert.equal(c.status().phase,'synced');
+});
+test('changed merge conflict requests a new comparison instead of staying permanently paused',async t=>{
+ const base=fresh();base.state.extra.personalFuture={note:'base'};const s=store(base,'owner'),remote=copy(base);s.r.meta.base=copy(base);s.change(r=>r.state.extra.personalFuture.note='local');remote.state.extra.personalFuture.note='remote';
+ const b=backend(remote),{c}=await controller(s,b,{autoSchedule:true});t.after(()=>c.close());await c.syncNow();assert.equal(c.status().phase,'conflict');
+ s.change(r=>r.state.extra.personalFuture.note='new local');c.localChanged(true);await c.resolve('local');assert.equal(c.status().phase,'pending');assert.ok(c.diagnostics().nextRetryAt);await c.syncNow();assert.equal(c.status().phase,'conflict');
+ assert.equal(s.r.meta.conflicts[0].result.conflicts[0].local,'new local');
+});
+test('a newer server head withdraws idle success until the update is applied',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),a=b.adapter();let callback;a.subscribe=fn=>{callback=fn;return()=>{};};
+ const {c}=await controller(s,{adapter:()=>a});t.after(()=>c.close());await drain(c);b.version++;b.snapshot.state.extra.otherDevice='new record';callback({version:b.version});
+ assert.equal(c.status().phase,'pending');assert.match(c.status().message,/其他设备更新/);await drain(c);assert.equal(s.r.state.extra.otherDevice,'new record');assert.equal(c.status().phase,'synced');
+});
+test('listener quota failure cancels an already scheduled check instead of silently retrying',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),a=b.adapter();let callback;a.subscribe=fn=>{callback=fn;return()=>{};};
+ const {c}=await controller(s,{adapter:()=>a},{autoSchedule:true});t.after(()=>c.close());await c.syncNow();c.schedule(10000);assert.ok(c.diagnostics().nextRetryAt);
+ callback({error:Object.assign(Error('quota reached'),{code:'resource-exhausted'})});assert.equal(c.status().phase,'quota');assert.equal(c.diagnostics().nextRetryAt,null);c.wake();assert.equal(c.diagnostics().nextRetryAt,null);
+});
+test('return to foreground can advance a delayed retry while retaining a single running cycle',async t=>{
+ const s=store(fresh(),'owner'),b=backend(),a=b.adapter(),{c}=await controller(s,{adapter:()=>a},{autoSchedule:true});t.after(()=>c.close());await drain(c);
+ const pull=a.pull;a.pull=async()=>{throw Object.assign(Error('unavailable'),{code:'unavailable'});};await c.syncNow();const delayed=c.diagnostics().nextRetryAt;assert.ok(delayed>Date.now()+4000);
+ a.pull=pull;c.wake();assert.ok(c.diagnostics().nextRetryAt<delayed);await drain(c);assert.equal(c.status().phase,'synced');
 });
