@@ -77,12 +77,13 @@
   if(unique.length===1)return {key:identity(unique[0]),status:'exact',reason:'词条与释义唯一精确匹配',binding:unique[0]};
   return {key:JSON.stringify(['record',record.id]),status:'pending',reason:unique.length>1?'同义释义有多个来源或词性，待核查':rows.length?'没有唯一精确匹配，待核查':'导入学习词库后可核对关联',binding:null};
  }
- function pointRecords(data,learning){
+ function pointRecords(data,learning,extra={}){
   const records=new Map(list(learning.cards).map(c=>[c.id,c]));
   for(const recordId of Object.keys(learning.attempts||{})){
    if(records.has(recordId))continue;
    try{const p=JSON.parse(recordId);if(p.length!==6||p[0]!=='word'||typeof p[1]!=='string'||typeof p[2]!=='string'||typeof p[3]!=='string'||!Number.isInteger(p[4])||typeof p[5]!=='string')continue;const w=data.words[p[1]];records.set(recordId,{id:recordId,wordKey:p[1],word:w?.word||p[1].split('::').at(-1),sense:p[2],articleKey:p[3],paragraph:p[4],context:p[5],allowed:w?.allowed||'',articleTitle:data.articles.find(a=>a.key===p[3])?.title||'历史文章',created:0,assessmentOnly:true});}catch{}
   }
+  for(const a of Object.values(extra.senseAttempts||{})){const i=a.item;if(i&&!records.has(i.sourceRecordId))records.set(i.sourceRecordId,{id:i.sourceRecordId,wordKey:i.wordKey,word:i.word,sense:i.sense,articleKey:i.articleKey,articleTitle:i.articleTitle,paragraph:i.paragraph,context:i.context,form:i.form||i.word,allowed:i.allowed||'',created:0,assessmentOnly:true});}
   return [...records.values()];
  }
  function eventsFor(learning,extra,now){
@@ -91,21 +92,22 @@
   for(const r of results){const id=r.snapshot?.id||r.sourceRecordId;if(!mirrors.has(id))mirrors.set(id,[]);mirrors.get(id).push(r);}
   for(const [id,a]of Object.entries(learning.attempts||{}))if(!(mirrors.get(id)||[]).some(r=>r.kind==='word'&&r.rating===a.rating&&(r.guess||'')===(a.guess||'')&&Math.abs(Date.parse(r.at)-Number(a.at))<=2000))add(id,{id:'point-'+id+'-'+a.at,at:Number(a.at),rating:a.rating,kind:'word',mode:'point',guess:a.guess||''});
   for(const r of results)add(r.sourceRecordId,{id:r.id,at:Date.parse(r.at),rating:r.rating,kind:r.kind,mode:r.mode,correct:r.correct,guess:r.guess||'',context:r.snapshot?.context||r.snapshot?.en||'',sense:r.snapshot?.sense||''});
+  for(const a of Object.values(extra.senseAttempts||{}))if(['match','different'].includes(a.outcome))add(a.item.sourceRecordId,{id:a.id,at:Date.parse(a.at),rating:a.outcome==='match'?(a.confidence==='sure'?'known':'uncertain'):'wrong-sense',kind:'sense',mode:'comparison',correct:a.outcome==='match',confidence:a.confidence,context:a.item.context,sense:a.item.choices.find(b=>identity(b)===a.item.answer)?.definition||''});
   return map;
  }
  function schedule(events,now){
   const history=[...new Map(events.map(e=>[e.id,e])).values()].sort((a,b)=>a.at-b.at||a.id.localeCompare(b.id));
   if(!history.length)return {dueAt:now,interval:0,reason:'尚无复习判断，先独立回忆一次',evidence:'未复习',history};
-  const last=history.at(-1),known=e=>e.kind==='question'?e.correct===true:e.rating==='known';
-  if(!known(last)){const interval=last.rating==='wrong-sense'||last.kind==='question'?600000:DAY;return {dueAt:last.at+interval,interval,reason:interval===DAY?'最近仍模糊，1 天后再核对':'最近误判，10 分钟后换语境复测',evidence:last.kind==='question'?'客观作答':'自评',history};}
+  const last=history.at(-1),known=e=>['question','sense'].includes(e.kind)?e.correct===true&&(e.kind!=='sense'||e.confidence==='sure'):e.rating==='known';
+  if(!known(last)){const interval=last.rating==='wrong-sense'||last.kind==='question'||last.kind==='sense'&&last.correct===false?600000:DAY;return {dueAt:last.at+interval,interval,reason:interval===DAY?'最近仍模糊，1 天后再核对':'最近误判，10 分钟后换语境复测',evidence:['question','sense'].includes(last.kind)?'客观作答':'自评',history};}
   let streak=0,previous=Infinity;
   for(let i=history.length-1;i>=0;i--){const e=history[i];if(!known(e))break;if(previous-e.at>=20*3600000){streak++;previous=e.at;}}
   const days=[1,3,7,14,30][Math.min(4,Math.max(0,streak-1))],interval=days*DAY;
-  return {dueAt:last.at+interval,interval,reason:`${Math.max(1,streak)} 次间隔至少 20 小时的认识判断，${days} 天后再验证`,evidence:last.kind==='question'?'客观作答':'自评，尚需新语境验证',history};
+  return {dueAt:last.at+interval,interval,reason:`${Math.max(1,streak)} 次间隔至少 20 小时的认识判断，${days} 天后再验证`,evidence:['question','sense'].includes(last.kind)?'客观作答':'自评，尚需新语境验证',history};
  }
  function profiles(data,learning={},extra={},now=Date.now()){
   const rows=catalogRows(extra.studyLexicons),groups=new Map(),events=eventsFor(learning,extra,now);
-  for(const r of pointRecords(data,learning)){
+  for(const r of pointRecords(data,learning,extra)){
    const a=association(r,extra,rows);if(!groups.has(a.key))groups.set(a.key,{id:a.key,word:r.word,sense:a.binding?.definition||r.sense,pos:a.binding?.pos||'',status:a.status,binding:a.binding,reason:a.reason,records:[],events:[]});
    const group=groups.get(a.key);group.records.push(r);group.events.push(...(events.get(r.id)||[]));
   }

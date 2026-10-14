@@ -22,7 +22,7 @@
   function create({store:S,core:C,adapter:A,allowedUid,onStatus=()=>{},followResume=()=>false,online=()=>true,clock=()=>Date.now(),delay=5000,slowAfter=20000,autoSchedule=true}){
     let user=null,epoch=0,active=false,running=false,again=false,timer=null,periodic=null,stopAuth=null,stopRemote=null,lastRun=0,retry=0,closed=false,status={phase:'signed-out',message:'未登录；学习记录保存在本机。'};
     const emit=(phase,message,more={})=>{status={phase,message,uid:user?.uid||null,...more};onStatus(status);return status;};
-    let stage=null,stageAt=0,slowTimer=null,lastSynced=null,quietCheck=false;
+    let stage=null,stageAt=0,cycleAt=0,slowTimer=null,lastSynced=null,quietCheck=false;
     function slow(){
       if(running&&active&&stage&&clock()-stageAt>=slowAfter)
         emit('waiting',`同步等待较久：${stage.message} 本机记录保留，可继续阅读。`,{stage:stage.code,elapsedMs:clock()-stageAt});
@@ -124,7 +124,7 @@
     }
     async function syncNow(){
       if(!active||closed)return status;if(running){again=true;return status;}
-      running=true;again=false;lastRun=clock();const session=epoch;
+      running=true;again=false;lastRun=cycleAt=clock();const session=epoch;
       try{await cycle(session);}
       catch(error){
         if(error.code==='session-changed'||epoch!==session||closed)return status;
@@ -163,7 +163,7 @@
       emit('syncing','选择已保存在本机，正在同步。');schedule(0);return status;
     }
     stopAuth=A.onAuth((next,error)=>{identity(next,error).catch(error=>emit('error',error.message));});
-    return {syncNow,enable,resolve,schedule,wake(){slow();schedule(0);},status:()=>status,diagnostics:()=>({running,stage:stage?.code||null,stageAt,elapsedMs:stage?clock()-stageAt:0,lastSynced,retry}),signIn:()=>A.signIn(),signOut:async()=>{stop();lastSynced=null;await A.signOut();user=null;emit('signed-out','已退出登录；本机记录保留。');},close(){closed=true;stop();clearTimeout(slowTimer);stopAuth?.();stopProgress?.();},wire,meaningful};
+    return {syncNow,enable,resolve,schedule,wake(){slow();schedule(0);},status:()=>status,diagnostics:()=>({running,cycleElapsedMs:running?clock()-cycleAt:0,stage:stage?.code||null,stageAt,elapsedMs:stage?clock()-stageAt:0,lastSynced,retry}),signIn:()=>A.signIn(),signOut:async()=>{stop();lastSynced=null;await A.signOut();user=null;emit('signed-out','已退出登录；本机记录保留。');},close(){closed=true;stop();clearTimeout(slowTimer);stopAuth?.();stopProgress?.();},wire,meaningful};
   }
   return {create,wire,meaningful};
 });
@@ -221,6 +221,11 @@ if(typeof window!=='undefined'&&window.StudyCloudSync){
     $('cloudKeepRemote').addEventListener('click',()=>action(()=>controller.resolve('remote')));
     $('cloudConflictExport').addEventListener('click',()=>action(async()=>{const record=await S.readSync(),conflicts=record.meta?.conflicts||[];if(!conflicts.length)return;const url=URL.createObjectURL(new Blob([JSON.stringify({format:'english-study-sync-conflict',version:1,conflicts},null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='english-study-conflict-copies.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}));
     $('cloudBackup').addEventListener('click',()=>window.StudyWorkspaceAPI?.openBackup());
+    $('cloudDiagnosticExport')?.addEventListener('click',()=>action(async()=>{
+      const record=await S.readSync(),report={format:'english-study-sync-diagnostics',version:1,appVersion:'20261014-v31',createdAt:new Date().toISOString(),environment:{userAgent:navigator.userAgent,online:navigator.onLine,visibility:document.visibilityState},phase:lastStatus.phase,controller:controller?.diagnostics()||null,local:{phase:S.status().phase,pendingOperations:record.pending.length,hasFlight:!!record.meta.flight,hasConflicts:!!record.meta.conflicts?.length,remoteVersion:record.meta.remoteVersion,bound:!!record.meta.boundUid}};
+      const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='english-study-sync-diagnostics.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);$('cloudDiagnosticStatus').textContent='诊断已导出；不包含账号标识、文章、作答或私人学习内容。';
+    }));
+
     document.addEventListener('study-local-commit',()=>controller?.schedule());
     window.addEventListener('online',()=>{if(controller)controller.schedule(0);else boot();});
     window.addEventListener('focus',()=>{if(controller)controller.wake();else boot();});

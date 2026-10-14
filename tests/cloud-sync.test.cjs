@@ -92,7 +92,7 @@ test('a stalled pull reports its stage, never runs a concurrent cycle, and recov
  let now=0;
  const {c}=await controller(s,{adapter:()=>adapter},{slowAfter:15,clock:()=>now});t.after(()=>c.close());
  const pending=c.syncNow();await wait();await wait();now=20;c.wake();
- assert.equal(c.status().phase,'waiting');assert.equal(c.diagnostics().stage,'cloud-head');
+ assert.equal(c.status().phase,'waiting');assert.equal(c.diagnostics().stage,'cloud-head');assert.equal(c.diagnostics().cycleElapsedMs,20);
  await c.syncNow();c.wake();assert.equal(pulls,1);assert.equal(c.diagnostics().running,true);
  finish({version:0,snapshot:null});await pending;assert.equal(c.diagnostics().running,false);assert.equal(c.status().phase,'synced');
 });
