@@ -3,7 +3,7 @@ const fs=require('fs'),path=require('path'),http=require('http'),assert=require(
 const {chromium}=require(process.env.ENGLISH_STUDY_PLAYWRIGHT_PATH||'playwright');
 const repo=path.resolve(__dirname,'..'),out=process.env.ENGLISH_STUDY_QA_OUTPUT||fs.mkdtempSync(path.join(require('os').tmpdir(),'english-study-panels-'));
 fs.mkdirSync(out,{recursive:true});
-const routes=[['articleRecordsOpen','articleRecordsDialog'],['contextOpen','contextDialog'],['editorOpen','editorDialog'],['quizOpen','quizDialog'],['toolsRound','roundDialog'],['toolsPending','pendingDialog'],['toolsLookup','lookupDialog'],['queueOpen','queueDialog'],['toolsInsight','insightDialog'],['importButton','libraryDialog'],['toolsBackup','backupDialog'],['cloudButton','cloudDialog'],['saveStatus','saveDialog'],['sourceTrust','trustDialog']];
+const routes=[['toolsLibrarySearch','librarySearchDialog'],['articleRecordsOpen','articleRecordsDialog'],['contextOpen','contextDialog'],['editorOpen','editorDialog'],['quizOpen','quizDialog'],['toolsRound','roundDialog'],['toolsPending','pendingDialog'],['toolsLookup','lookupDialog'],['queueOpen','queueDialog'],['toolsInsight','insightDialog'],['importButton','libraryDialog'],['toolsBackup','backupDialog'],['cloudButton','cloudDialog'],['saveStatus','saveDialog'],['sourceTrust','trustDialog']];
 const errors=[],warnings=[],checks=[];let browser,origin;
 const server=http.createServer((q,r)=>{const u=new URL(q.url,'http://localhost');if(u.pathname==='/firebase-config.js'){r.setHeader('Content-Type','text/javascript');return r.end('window.ENGLISH_STUDY_FIREBASE=null;');}if(u.pathname==='/favicon.ico'){r.writeHead(204);return r.end();}const file=path.resolve(repo,'.'+(u.pathname==='/'?'/index.html':u.pathname));if(!file.startsWith(repo+'/')){r.writeHead(403);return r.end();}fs.readFile(file,(e,b)=>{if(e){r.writeHead(404);return r.end();}r.setHeader('Content-Type',({js:'text/javascript',css:'text/css',html:'text/html',json:'application/json'})[file.split('.').at(-1)]||'application/octet-stream');r.end(b);});});
 async function ready(p){await p.waitForFunction(()=>window.StudyReaderAPI&&StudyState.status().phase==='saved');await p.waitForTimeout(120);}
@@ -31,7 +31,7 @@ async function test(name,fn){await fn();checks.push({name,pass:true});console.lo
  await test('all existing secondary tools open the correct native dialog with one live control and no changed learning records',async()=>{
   assert.match(await p.title(),/English Study/);assert.ok((await p.locator('#englishBody').innerText()).length>500);
   const before=await p.evaluate(()=>JSON.stringify({learning:StudyState.get('learning'),extra:StudyState.get('extra')}));
-  await p.locator('#toolsButton').click();assert.equal(await p.locator('#toolsDialog .panel-menu-group').count(),3);assert.equal(await p.locator('#toolsDialog .panel-menu-item').count(),14);assert.ok(await p.locator('#cloudButton .panel-menu-text').evaluate(e=>e.clientWidth>100));await p.screenshot({path:path.join(out,'more-desktop.png')});await close(p,'toolsDialog');
+  await p.locator('#toolsButton').click();assert.equal(await p.locator('#toolsDialog .panel-menu-group').count(),3);assert.equal(await p.locator('#toolsDialog .panel-menu-item').count(),15);assert.ok(await p.locator('#cloudButton .panel-menu-text').evaluate(e=>e.clientWidth>100));await p.screenshot({path:path.join(out,'more-desktop.png')});await close(p,'toolsDialog');
   for(const [id,dialog]of routes){assert.equal(await p.locator('#'+id).count(),1);await open(p,id,dialog);await fit(p,dialog);await close(p,dialog);}
   assert.equal(await p.evaluate(()=>JSON.stringify({learning:StudyState.get('learning'),extra:StudyState.get('extra')})),before);
  });
@@ -70,7 +70,7 @@ async function test(name,fn){await fn();checks.push({name,pass:true});console.lo
  await test('reduced motion, narrow desktop and night theme keep legible controls without horizontal scrolling',async()=>{
   await p.emulateMedia({reducedMotion:'reduce'});await p.setViewportSize({width:535,height:800});await theme(p,'dark');await open(p,'toolsRound','roundDialog');await fit(p,'roundDialog');await close(p,'roundDialog');await p.locator('#settingsButton').click();await fit(p,'settingsDialog');assert.ok(await p.locator('#themeButton').evaluate(e=>getComputedStyle(e,'::after').content.includes('浅色')));await close(p,'settingsDialog');
  });
- await test('X on all fourteen menu children returns to More with its scroll position, clicked control and unchanged records',async()=>{
+ await test('X on all fifteen menu children returns to More with its scroll position, clicked control and unchanged records',async()=>{
   await p.setViewportSize({width:1536,height:1024});await theme(p,'light');
   await p.evaluate(()=>document.addEventListener('click',e=>{if(e.target.closest('#toolsDialog .panel-menu-item'))window.__menuScroll=document.querySelector('#toolsDialog').scrollTop;},{capture:true}));
   const before=await p.evaluate(()=>JSON.stringify({learning:StudyState.get('learning'),extra:StudyState.get('extra')}));
@@ -102,7 +102,7 @@ async function test(name,fn){await fn();checks.push({name,pass:true});console.lo
  });
  await test('same-editor refresh and native settings submission do not create duplicate ancestors',async()=>{
   await open(p,'editorOpen','editorDialog');for(let i=0;i<3;i++){await p.locator('#editTitle').fill('Navigation QA draft '+i);await p.locator('#editDiscard').click();assert.equal(await p.evaluate(()=>StudyPanels.depth()),2);}await close(p,'editorDialog');
-  await p.locator('#settingsButton').click();await p.locator('#guessMode').focus();const before=await p.locator('#guessMode').isChecked();await p.keyboard.press('Space');assert.equal(await p.locator('#guessMode').isChecked(),!before);await p.keyboard.press('Space');await p.locator('#settingsDialog .settings-footer .primary-button').click();await p.waitForTimeout(80);assert.equal(await p.evaluate(()=>StudyPanels.depth()),0);assert.equal(await p.evaluate(()=>document.activeElement.id),'settingsButton');
+  await p.locator('#settingsButton').click();await p.locator('#guessMode').focus();const before=await p.locator('#guessMode').isChecked();await p.keyboard.press('Space');assert.equal(await p.locator('#guessMode').isChecked(),!before);await p.keyboard.press('Space');await p.locator('#settingsDialog .settings-footer .primary-button').click();await p.waitForFunction(()=>StudyPanels.depth()===0);assert.equal(await p.evaluate(()=>StudyPanels.depth()),0);assert.equal(await p.evaluate(()=>document.activeElement.id),'settingsButton');
  });
  await test('backdrop dismissal returns to the parent with no accidental double pop from native close events',async()=>{
   await open(p,'toolsLookup','lookupDialog');await p.mouse.click(2,2);await p.waitForTimeout(150);assert.ok(await p.locator('#toolsDialog').isVisible());assert.equal(await p.evaluate(()=>StudyPanels.depth()),1);await p.keyboard.press('Escape');await p.waitForTimeout(150);assert.equal(await p.evaluate(()=>StudyPanels.depth()),0);assert.equal(await p.locator('dialog[open]').count(),0);

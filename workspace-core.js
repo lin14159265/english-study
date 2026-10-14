@@ -54,6 +54,7 @@
     if(x.editUndo!==undefined&&(!object(x.editUndo)||typeof x.editUndo.sourceId!=='string'||x.editUndo.edit!==null&&(!object(x.editUndo.edit)||!P.validate(x.editUndo.edit.payload).ok)))errors.push('修订撤销记录无效。');
     const E=typeof module!=='undefined'&&module.exports?require('./experience-core.js'):root.StudyExperienceCore;if(E)errors.push(...E.validateExtra(x));
     const Study=typeof module!=='undefined'&&module.exports?require('./study-core.js'):root.StudyCore;if(Study)errors.push(...Study.validateStudy(x));
+    const V31=typeof module!=='undefined'&&module.exports?require('./library-tools-core.js'):root.StudyLibraryToolsCore;if(V31)errors.push(...V31.validate(x));
     return [...new Set(errors)];
   }
   function validQuestionSnapshot(q){return object(q)&&typeof q.id==='string'&&typeof q.prompt==='string'&&q.prompt.trim().length>0&&Array.isArray(q.choices)&&q.choices.length===4&&new Set(q.choices.map(c=>c?.id)).size===4&&q.choices.every(c=>object(c)&&typeof c.id==='string'&&typeof c.text==='string'&&c.text.trim().length>0)&&q.choices.some(c=>c.id===q.answer)&&typeof q.explanation==='string'&&q.explanation.trim().length>0&&Array.isArray(q.evidence)&&q.evidence.length>0&&q.evidence.every(e=>object(e)&&Number.isInteger(e.paragraph)&&e.paragraph>0&&typeof e.quote==='string'&&e.quote.trim().length>0);}
@@ -93,6 +94,9 @@
     }return s;}
     function rewrite(v){if(typeof v==='string')return rewriteString(v);if(Array.isArray(v))return v.map(rewrite);if(object(v))return Object.fromEntries(Object.entries(v).map(([k,v])=>[rewriteString(k),rewrite(v)]));return v;}
     copy.state=rewrite(copy.state);
+    if(mapping.original){const id=mapping.original,x=copy.state.extra;if(x.bookSettings?.original){x.bookSettings[id]=x.bookSettings.original;delete x.bookSettings.original;}
+      const items=[...Object.values(x.senseAttempts||{}).map(a=>a.item),...(x.senseSession?.items||[])];for(const i of items)if(i.articleKey.startsWith(id+'/')){if(!i.wordKey.startsWith(id+'::'))i.wordKey=id+'::'+i.wordKey;i.sourceRecordId=JSON.stringify(['word',i.wordKey,i.sense,i.articleKey,i.paragraph,i.context]);i.id=JSON.stringify([i.sourceRecordId,i.answer]);}
+    }
     if(mapping.original){const id=mapping.original;delete copy.state.extra.edits.original;const rounds=[...(copy.state.extra.reviewRounds||[]),...(copy.state.extra.reviewSession?[copy.state.extra.reviewSession]:[])],cards=[...copy.state.learning.cards,...copy.state.learning.trash.filter(t=>t.kind==='word').map(t=>t.record),...rounds.flatMap(r=>[...r.items,...r.results].filter(v=>v.kind==='word').map(v=>v.snapshot))],ids={};for(const c of cards)if(c.articleKey.startsWith(id+'/')){const old=c.id;if(!c.wordKey.startsWith(id+'::'))c.wordKey=id+'::'+c.wordKey;c.id=JSON.stringify(['word',c.wordKey,c.sense,c.articleKey,c.paragraph,c.context]);ids[old]=c.id;if(copy.state.learning.attempts[old]){copy.state.learning.attempts[c.id]=copy.state.learning.attempts[old];delete copy.state.learning.attempts[old];}}for(const r of rounds)for(const v of [...r.items,...r.results]){if(ids[v.sourceRecordId])v.sourceRecordId=ids[v.sourceRecordId];if(ids[v.id])v.id=ids[v.id];}}
 
     if(mapping.original){const id=mapping.original,p=copy.packs.find(p=>p.id===id);for(const [key,d]of Object.entries(copy.state.extra.editorDrafts))if(key.startsWith(id+'/')){d.payload.id=id;d.baseHash=hash(p);}}
@@ -117,9 +121,9 @@
     if(a.reader.visitKeys!==undefined||b.reader.visitKeys!==undefined)a.reader.visitKeys=Object.fromEntries([...new Set([...Object.keys(a.reader.visitKeys||{}),...Object.keys(b.reader.visitKeys||{})])].map(key=>[key,Math.max(a.reader.visitKeys?.[key]||0,b.reader.visitKeys?.[key]||0)]));
     if(prefer==='backup'){a.reader.settings=clone(b.reader.settings||{});a.reader.currentKey=b.reader.currentKey;a.reader.resumeKey=b.reader.resumeKey||b.reader.currentKey;a.learning.guessMode=b.learning.guessMode;}
     for(const k of ['difficulty','verifications'])a.extra[k]=mergeMap(a.extra[k]||{},b.extra[k]||{},prefer,conflicts,k);
-    for(const k of ['studyLexicons','studyBindings','studyDeferrals'])if(a.extra[k]!==undefined||b.extra[k]!==undefined)a.extra[k]=mergeMap(a.extra[k]||{},b.extra[k]||{},prefer,conflicts,k==='studyLexicons'?'学习词库':k==='studyBindings'?'义项关联':'复习暂缓');
+    for(const k of ['studyLexicons','studyBindings','studyDeferrals','bookSettings','senseAttempts'])if(a.extra[k]!==undefined||b.extra[k]!==undefined)a.extra[k]=mergeMap(a.extra[k]||{},b.extra[k]||{},prefer,conflicts,k==='studyLexicons'?'学习词库':k==='studyBindings'?'义项关联':k==='bookSettings'?'书籍整理':k==='senseAttempts'?'义项辨析':'复习暂缓');
     for(const k of ['pendingSentences','removedPending','lookupWords','reviewRounds'])a.extra[k]=mergeList(a.extra[k]||[],b.extra[k]||[],prefer,conflicts,k);
-    for(const k of ['reviewSession','returnPoint','lastBackupAt'])if(b.extra[k]!==undefined&&(!a.extra[k]||prefer==='backup'))a.extra[k]=clone(b.extra[k]);
+    for(const k of ['reviewSession','senseSession','returnPoint','lastBackupAt'])if(b.extra[k]!==undefined&&(!a.extra[k]||prefer==='backup'))a.extra[k]=clone(b.extra[k]);
     for(const k of ['edits','editorDrafts','quizDrafts'])a.extra[k]=mergeMap(a.extra[k],b.extra[k],prefer,conflicts,k);
     for(const k of ['quizAttempts','wrongQuestions','queue','removedTasks'])a.extra[k]=mergeList(a.extra[k],b.extra[k],prefer,conflicts,k);
     if(!a.extra.activeTask||prefer==='backup')a.extra.activeTask=b.extra.activeTask;

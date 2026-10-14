@@ -17,10 +17,10 @@
     missingResume:typeof reader.resumeKey==='string'&&reader.resumeKey.startsWith(g.id+'/')&&!keys.has(reader.resumeKey),cover:cover(g.id)};
   });
  }
- function chapters(book,{query='',read='all',readKeys=[]}={}){const seen=new Set(readKeys);return book.articles.filter(a=>(read==='all'||seen.has(a.key)===(read==='read'))&&L.queryMatches(a.title+' '+(a.zhTitle||'')+' '+book.title+' '+book.topics.join(' '),query));}
+ function chapters(book,{query='',read='all',readKeys=[]}={}){const seen=new Set(readKeys);return book.articles.filter(a=>(read==='all'||seen.has(a.key)===(read==='read'))&&L.queryMatches(a.title+' '+(a.zhTitle||'')+' '+book.title+' '+(book.sourceTitle||'')+' '+(book.collection||'')+' '+book.topics.join(' '),query));}
  function filter(books,{query='',topic='all',read='all'}={}){
   return books.filter(b=>(topic==='all'||b.topics.includes(topic))&&(read==='all'||read==='read'&&b.complete||read==='unread'&&!b.complete||read==='progress'&&b.started&&!b.complete))
-   .map(b=>{const titleMatch=L.queryMatches(b.title+' '+b.topics.join(' '),query),matches=titleMatch?b.articles:chapters(b,{query});return {...b,titleMatch,matches};}).filter(b=>b.matches.length);
+   .map(b=>{const titleMatch=L.queryMatches(b.title+' '+(b.sourceTitle||'')+' '+(b.collection||'')+' '+b.topics.join(' '),query),matches=titleMatch?b.articles:chapters(b,{query});return {...b,titleMatch,matches};}).filter(b=>b.matches.length);
  }
  const action=b=>b.hasResume?'继续阅读':b.complete?'重读本书':b.readCount?'读未读章节':'开始阅读';
  return {books,filter,chapters,cover,action};

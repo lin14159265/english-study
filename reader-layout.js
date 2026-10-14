@@ -47,12 +47,12 @@
       menu.insertBefore(group,menu.querySelector('.difficulty-row'));
     }
     menuGroup('本篇工具',[['articleRecordsOpen','book'],['contextOpen','search'],['editorOpen','edit'],['quizOpen','check']]);
-    menuGroup('学习与复习',[['toolsRound','repeat'],['toolsPending','note'],['toolsLookup','search'],['queueOpen','list'],['toolsInsight','chart']]);
+    menuGroup('学习与复习',[['toolsLibrarySearch','search'],['toolsRound','repeat'],['toolsPending','note'],['toolsLookup','search'],['queueOpen','list'],['toolsInsight','chart']]);
     menuGroup('资料与设备',[['importButton','plus'],['toolsBackup','backup'],['cloudButton','cloud','云同步'],['saveStatus','save','保存与离线'],['sourceTrust','check']]);
     const help=document.createElement('div');help.className='panel-help-entry';help.append($('guideOpen'));menu.insertBefore(help,menu.querySelector('.difficulty-row'));
     const finder=document.createElement('div');finder.className='tool-finder';finder.innerHTML='<label for="toolsSearch">找功能</label><input id="toolsSearch" type="search" maxlength="100" placeholder="例如：生词、错句、导入、备份" autocomplete="off" aria-describedby="toolsSearchStatus"><p id="toolsSearchStatus" class="learning-meta" role="status" hidden></p>';
     menu.insertBefore(finder,menu.querySelector('.panel-menu-group'));
-    const keywords={articleRecordsOpen:'生词 收藏 笔记 批注 本篇记录',contextOpen:'历史 语境 例句 搜索 检索',editorOpen:'编辑 纠错 修订 翻译 中文 修改',quizOpen:'小测 测验 成绩 答案 作答',toolsRound:'复习 生词 义项卡 错句 错题 自测',toolsPending:'疑句 难句 句子 待分析 错句',toolsLookup:'查词 词典 短语 生词 待查 笔记',queueOpen:'任务 队列 待办 计划 重读',toolsInsight:'学习 回顾 统计 成绩',importButton:'导入 资料 JSON 文件 文章 模板 提示词',toolsBackup:'备份 导出 恢复 迁移 回退 分卷',cloudButton:'同步 云端 账号 Google 登录 设备',saveStatus:'保存 失败 离线 缓存 更新 进度',sourceTrust:'内容 核验 词义 检查'};
+    const keywords={toolsLibrarySearch:'跨书 正文 搜索 检索 笔记 全部记录',articleRecordsOpen:'生词 收藏 笔记 批注 本篇记录',contextOpen:'历史 语境 例句 搜索 检索',editorOpen:'编辑 纠错 修订 翻译 中文 修改',quizOpen:'小测 测验 成绩 答案 作答',toolsRound:'复习 生词 义项卡 错句 错题 自测',toolsPending:'疑句 难句 句子 待分析 错句',toolsLookup:'查词 词典 短语 生词 待查 笔记',queueOpen:'任务 队列 待办 计划 重读',toolsInsight:'学习 回顾 统计 成绩',importButton:'导入 资料 JSON 文件 文章 模板 提示词',toolsBackup:'备份 导出 恢复 迁移 回退 分卷',cloudButton:'同步 云端 账号 Google 登录 设备',saveStatus:'保存 失败 离线 缓存 更新 进度',sourceTrust:'内容 核验 词义 检查'};
     const toolRows=[...menu.querySelectorAll('.panel-menu-item')].map(button=>({button,text:button.textContent+' '+(keywords[button.id]||'')}));
     function filterTools(){
       const query=$('toolsSearch').value.trim();let count=0;
