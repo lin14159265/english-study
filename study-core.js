@@ -131,11 +131,22 @@
   const items=targets.map(t=>{const alternate=t.kind==='word'?(uses.get(t.profile.id)||[]).find(r=>r.context!==t.record.context):null;return {id:t.record.id,sourceRecordId:t.record.id,kind:t.kind,snapshot:clone(alternate||t.record),mode:alternate?'transfer':'saved',order:1,at:t.schedule.history.at(-1)?.at||0};});
   return {id:'study-'+now+'-'+Math.random().toString(36).slice(2,8),startedAt:new Date(now).toISOString(),index:0,items,results:[],draft:{}};
  }
- function recommendations(data,learning,extra,reader={},now=Date.now(),limit=3){
-  const groups=profiles(data,learning,extra,now),due=new Map(groups.filter(g=>g.saved&&g.schedule.dueAt<=now&&['exact','manual'].includes(g.status)).map(g=>[g.id,g])),rows=catalogRows(extra.studyLexicons),read=new Set(reader.readKeys||[]);
-  return data.articles.map(a=>{const matched=new Set();for(const wordKey of a.words||[])for(const u of data.words[wordKey]?.uses||[])if(u.article===a.id){const r=L.usage(data,wordKey,u),key=association(r,extra,rows).key;if(due.has(key))matched.add(key);}
-   const count=matched.size,words=[...matched].map(key=>due.get(key).word+' · '+due.get(key).sense);
-   return {article:a,count,words,score:count*10+(read.has(a.key)?0:2),reason:count?`再次遇到 ${count} 个待复测义项：${words.slice(0,3).join('；')}`:read.has(a.key)?'重读熟悉文章，重新核对语境。':'从一篇未读文章开始，留下具体用义与难句。'};
+ function recommendations(data,learning,extra,reader={},now=Date.now(),limit=3,mode='balanced'){
+  if(!['balanced','light','focus'].includes(mode))mode='balanced';
+  const groups=profiles(data,learning,extra,now),due=new Map(groups.filter(g=>(g.saved||mode==='focus'&&g.schedule.history.some(e=>e.kind==='sense'&&e.correct===false))&&g.schedule.dueAt<=now&&['exact','manual'].includes(g.status)).map(g=>[g.id,g])),rows=catalogRows(extra.studyLexicons),read=new Set(reader.readKeys||[]),notes=new Map(),questions=new Map();
+  const add=(m,key,id)=>{if(!m.has(key))m.set(key,new Set());m.get(key).add(id);};
+  for(const r of list(learning.notes).filter(r=>!r.resolved)){if(L.locate(data,r))add(notes,r.articleKey,r.id);}
+  for(const r of list(extra.wrongQuestions).filter(r=>!r.resolved)){const a=data.articles.find(a=>a.key===r.articleKey);if(a?.questions?.some(q=>q.status==='ready'&&q.id===r.question.id&&q.prompt===r.question.prompt&&q.answer===r.question.answer&&JSON.stringify(q.choices)===JSON.stringify(r.question.choices)&&q.explanation===r.question.explanation))add(questions,a.key,r.id);}
+  return data.articles.filter(a=>!extra.bookSettings?.[a.batch]?.archived).map(a=>{const matched=new Set();for(const wordKey of a.words||[])for(const u of data.words[wordKey]?.uses||[])if(u.article===a.id){const r=L.usage(data,wordKey,u),key=association(r,extra,rows).key;if(due.has(key))matched.add(key);}
+   const count=matched.size,words=[...matched].map(key=>due.get(key).word+' · '+due.get(key).sense),mistakes=[...matched].filter(key=>due.get(key).schedule.history.slice(-5).filter(e=>e.rating==='wrong-sense'||['question','sense'].includes(e.kind)&&e.correct===false).length>=2).length,
+    sentenceCount=notes.get(a.key)?.size||0,questionCount=questions.get(a.key)?.size||0,wordCount=Number.isFinite(a.wordCount)?a.wordCount:(a.plain.join(' ').match(/\b[a-zA-Z]+(?:['’-][a-zA-Z]+)*\b/g)||[]).length,
+    minutes=Math.max(1,Math.ceil(wordCount/120)),difficulty=extra.difficulty?.[a.key]?.sourceSignature===a.sourceSignature?extra.difficulty[a.key].level:null,
+    visit=reader.visitKeys?.[a.key],recent=Number.isFinite(visit)&&visit<=now&&now-visit<20*60000,reasons=[];
+   const score=count*(mode==='light'?5:10)+mistakes*(mode==='focus'?16:8)+(sentenceCount+questionCount)*(mode==='focus'?9:3)+(read.has(a.key)?0:2)-(recent?3:0)-(mode==='light'?minutes*3+(difficulty==='hard'?18:0):mode==='balanced'&&difficulty==='hard'?4:0)+(mode==='light'&&difficulty==='easy'?5:0);
+   if(count)reasons.push(`再次遇到 ${count} 个待复测义项：${words.slice(0,3).join('；')}`);if(mistakes)reasons.push(`${mistakes} 个义项最近反复误判`);if(sentenceCount)reasons.push(`${sentenceCount} 条未理解错句`);if(questionCount)reasons.push(`${questionCount} 道当前版本错题`);
+   if(!reasons.length)reasons.push(read.has(a.key)?'重读熟悉文章，重新核对语境。':'从一篇未读文章开始，留下具体用义与难句。');
+   if(difficulty)reasons.push(({easy:'你把当前版本标为轻松',ok:'你把当前版本标为适中',hard:'你把当前版本标为吃力'})[difficulty]);if(recent)reasons.push('刚读过，排序稍后');
+   return {article:a,count,words,score,minutes,wordCount,mistakes,sentenceCount,questionCount,difficulty,recent,reason:reasons.join('；')};
   }).sort((a,b)=>b.score-a.score||a.article.id-b.article.id).slice(0,limit);
  }
  function groupShelf(articles,{query='',batch='all',topic='all',read='all',readKeys=[]}={}){
