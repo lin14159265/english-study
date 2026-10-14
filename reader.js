@@ -424,7 +424,7 @@
   document.addEventListener('keydown',e=>{
     if(e.key==='Escape'){closeWord(true);closeDirectory(true);}
     const editable=e.target.closest('input,textarea,select,[contenteditable]');
-    if(e.altKey&&!editable&&!document.querySelector('dialog[open]')){
+    if(e.altKey&&!editable&&!document.querySelector('dialog[open]')&&(!spaces||spaces.isReading())){
       if(e.key==='ArrowRight'){e.preventDefault();setArticle(state.current+1);}
       if(e.key==='ArrowLeft'){e.preventDefault();setArticle(state.current-1);}
     }
