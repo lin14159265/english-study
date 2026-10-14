@@ -1,7 +1,8 @@
 /* Commit-aware workspace storage with atomic restore and conflict prevention. */
 window.StudyState=(()=>{'use strict';const C=window.StudyWorkspaceCore;let db=null,value=null,timer,writing=Promise.resolve(),revision=0,written=0,warning='',restoring=false,phase='loading',savedAt=0,head=null,stale=false,commitSequence=0,libraryHead=null,libraryRevision=0,libraryWritten=0,pendingReload=null,syncApplying=false;const syncStores=['workspace','packs','syncOutbox','syncMeta'];const owner='page-'+Date.now()+'-'+Math.random().toString(36).slice(2),legacy={reader:'english-study.reader.v1',learning:'english-study.learning.v1'},channel=typeof BroadcastChannel==='function'?new BroadcastChannel('english-study.workspace'):null;
 const tokenFor=kind=>owner+':'+kind+':'+(++commitSequence);
-function report(p,message=''){phase=p;document.dispatchEvent(new CustomEvent('study-save-state',{detail:{phase:p,message,savedAt}}));}function conflict(){stale=true;warning='另一个页面已更新学习数据。请先导出本页未保存内容，再重新打开页面。';report('conflict',warning);}
+function status(){return {phase,message:warning,savedAt,durable:!!db,dirty:revision!==written,pendingReload:!!pendingReload,token:head};}
+function report(p,message=''){phase=p;document.dispatchEvent(new CustomEvent('study-save-state',{detail:{...status(),message}}));}function conflict(){stale=true;warning='另一个页面已更新学习数据。请先导出本页未保存内容，再重新打开页面。';report('conflict',warning);}
 // A library token is committed with workspace + packs, never trusted from a broadcast.
 const libraryVersion=saved=>typeof saved?.libraryToken==='string'?saved.libraryToken:null;
 function syncLock(){document.dispatchEvent(new CustomEvent('study-sync-applying',{detail:{active:syncApplying||!!pendingReload,pendingReload:!!pendingReload}}));}
@@ -90,6 +91,15 @@ async function readSync(){
   r.onsuccess=()=>snapshot.rollback=r.result||null;w.onsuccess=()=>{snapshot.token=w.result?.token||null;snapshot.state=w.result?.data||null;};p.onsuccess=()=>snapshot.packs=p.result;o.onsuccess=()=>snapshot.pending=o.result;m.onsuccess=()=>snapshot.meta=m.result||null;
  });if(snapshot.meta)snapshot.meta={...snapshot.meta,...payloads};return C.clone(snapshot);
 }
+// Status panels need queue counts, not cloned articles, baseline or flight payloads.
+async function syncSummary(){
+ let pendingOperations=0,hasFlight=false,meta=null;
+ await transaction(['syncOutbox','syncMeta'],'readonly',tx=>{
+  const q=tx.objectStore('syncOutbox').count(),m=tx.objectStore('syncMeta').get('current'),f=tx.objectStore('syncMeta').getKey(heavyKey('flight'));
+  q.onsuccess=()=>pendingOperations=q.result;m.onsuccess=()=>meta=m.result;f.onsuccess=()=>hasFlight=f.result!==undefined;
+ });
+ return {pendingOperations,hasFlight:hasFlight||!!meta?.flight,bound:!!meta?.boundUid,remoteVersion:meta?.remoteVersion||0};
+}
 function requireUid(meta,uid){if(typeof uid!=='string'||!uid||meta.boundUid!==uid)throw Error('本机学习数据未绑定此账号，不能同步。请使用原账号。');}
 async function bindUid(uid){if(typeof uid!=='string'||!uid)throw Error('账号无效。');return enqueue(async()=>{let answer;await transaction(syncStores,'readwrite',tx=>mutate(tx,meta=>{if(meta.boundUid&&meta.boundUid!==uid)throw Error('本机记录属于另一账号，请使用原账号或独立浏览器。');meta.boundUid=uid;answer=C.clone(meta);},{queue:false}));return answer;});}
 async function saveFlight({uid,expectedToken,payload}){
@@ -124,4 +134,4 @@ async function confirmSync({expectedToken,uid,base,remoteVersion,ackIds=[],ackOp
 }
 async function abandonFlight({uid,operationId,reason}){if(reason!=='remote-conflict')throw Error('仅确认云端拒绝的冲突批次可撤回；未收到确认时必须重试。');return enqueue(async()=>{await transaction(syncStores,'readwrite',tx=>mutate(tx,meta=>{requireUid(meta,uid);if(meta.flight?.operationId!==operationId)throw Error('待同步批次已改变。');delete meta.flight;},{queue:false,full:['flight']}));});}
 async function writeConflicts({uid,expectedToken,conflicts}){const saved=C.clone(conflicts);return enqueue(async()=>{ensureReady();if(revision!==written||stale||head!==expectedToken)throw Error('记录已改变，请重新读取。');await transaction(syncStores,'readwrite',tx=>guarded(tx,()=>mutate(tx,meta=>{requireUid(meta,uid);meta.conflicts=saved;},{queue:false,full:[]})));});}
-window.addEventListener('pagehide' ,()=>flush().catch(()=>{}));return {open,get,set,flush,restore,rollback,packs,writePacks,transaction,database:()=>db,warning:()=>warning,status:()=>({phase,message:warning,savedAt}),refresh,onReload,readSync,bindUid,saveFlight,applySync,confirmSync,abandonFlight,writeConflicts,canSync:()=>!!db&&!syncApplying&&!restoring&&!pendingReload&&!stale&&revision===written,libraryVersion:()=>libraryHead,retry:async()=>{await refresh();return flush();}};})();
+window.addEventListener('pagehide' ,()=>flush().catch(()=>{}));return {open,get,set,flush,restore,rollback,packs,writePacks,transaction,database:()=>db,warning:()=>warning,status,refresh,onReload,readSync,syncSummary,bindUid,saveFlight,applySync,confirmSync,abandonFlight,writeConflicts,canSync:()=>!!db&&!syncApplying&&!restoring&&!pendingReload&&!stale&&revision===written,libraryVersion:()=>libraryHead,retry:async()=>{await refresh();return flush();}};})();

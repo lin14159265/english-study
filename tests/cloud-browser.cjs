@@ -19,6 +19,7 @@ const state={reader:{currentKey:key,resumeKey:key,readKeys:[key,'original/2'],po
 assert.deepEqual(C.validateState(state),[]);const seedPacks=[{key:'local:'+pack.id,source:'local',payload:pack}];
 const cloud={version:0,snapshot:null,receipts:new Map(),attempts:new Map(),writes:0,loseAckFor:null};
 const adapterSource=`window.StudyFirebaseAdapter={async create(config){
+ if(sessionStorage.getItem('qa-bootstrap-fail')==='1')throw Object.assign(Error('Synthetic login component unavailable'),{code:'sdk-unavailable'});
  const user={uid:'owner',email:'synthetic-owner@example.test',providerData:[{providerId:'google.com'}]},callbacks=new Set();let current=localStorage.getItem('qa-auth')?user:null;
  const client=localStorage.getItem('qa-client')||crypto.randomUUID();localStorage.setItem('qa-client',client);window.__qaClient=client;
  async function request(method,body){const response=await fetch('/__qa/'+method,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify({...body,client}):undefined});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.message),{code:value.code});return value;}
@@ -79,7 +80,7 @@ async function seed(p){await p.goto(origin+'/__qa/seed');await p.evaluate(async 
 (async()=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin='http://127.0.0.1:'+server.address().port;
   browser=await chromium.launch({executablePath:process.env.ENGLISH_STUDY_CHROMIUM||undefined,args:['--no-sandbox','--disable-dev-shm-usage'],headless:true});
-  desktop=await browser.newContext({viewport:{width:1365,height:900},serviceWorkers:'block',acceptDownloads:true});mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});
+  desktop=await browser.newContext({viewport:{width:1536,height:1024},serviceWorkers:'block',acceptDownloads:true});mobile=await browser.newContext({viewport:{width:428,height:926},isMobile:true,hasTouch:true,serviceWorkers:'block'});
   a=await desktop.newPage();await watch(a,'desktop');await seed(a);await a.goto(origin+'/');await ready(a);
   await test('first migration requires backup acknowledgement and exports a complete valid personal JSON',async()=>{
     await signIn(a);await phase(a,'migration');assert.equal(cloud.version,0);await a.locator('#cloudEnable').click();assert.equal(cloud.version,0);assert.equal(await a.locator('#cloudMigration').isHidden(),false);
@@ -123,7 +124,7 @@ async function seed(p){await p.goto(origin+'/__qa/seed');await p.evaluate(async 
     await b.reload();await ready(b);await phase(b,'conflict');record=await b.evaluate(()=>StudyState.readSync());assert.ok(record.meta.conflicts[0].result.conflicts.length);await menuClick(b,'cloudButton');await b.locator('#cloudKeepLocal').click();await settle(b);await settle(a);assert.equal((await a.evaluate(()=>StudyState.get('learning'))).notes[0].own,'conflict-remote');assert.equal((await b.evaluate(()=>StudyState.readSync())).meta.conflicts.length,0);await b.locator('#cloudDialog .close-dialog').click();if(await b.locator('#toolsDialog').evaluate(d=>d.open))await b.locator('#toolsDialog .close-dialog').click();
   });
   await test('a lost acknowledgement retries a persistent operation ID after reopening and a later cloud head',async()=>{
-    cloud.loseAckFor=await a.evaluate(()=>window.__qaClient);await mutate(a,'unknown');await a.evaluate(()=>StudyCloudAPI.syncNow());await phase(a,'offline');const pending=await a.evaluate(()=>StudyState.readSync()),operation=pending.meta.flight.operationId,receipt=cloud.receipts.get(operation);assert.ok(receipt);await a.close();
+    cloud.loseAckFor=await a.evaluate(()=>window.__qaClient);await mutate(a,'unknown');await a.evaluate(()=>StudyCloudAPI.syncNow());await phase(a,'network-error');const pending=await a.evaluate(()=>StudyState.readSync()),operation=pending.meta.flight.operationId,receipt=cloud.receipts.get(operation);assert.ok(receipt);await a.close();
     await settle(b);await mutate(b,'advance');await settle(b);assert.ok(cloud.version>receipt.version);a=await desktop.newPage();await watch(a,'desktop receipt restart');await a.goto(origin+'/');await ready(a);
     // An old durable receipt can confirm this device before its automatic next
     // check downloads a later device's head. Await that actual business update.
@@ -150,13 +151,74 @@ async function seed(p){await p.goto(origin+'/__qa/seed');await p.evaluate(async 
     if(!await a.locator('#cloudDialog').evaluate(el=>el.open))await menuClick(a,'cloudButton');
     await a.waitForFunction(()=>StudyCloudAPI.status().phase==='waiting',null,{timeout:30000});
     assert.equal(await a.locator('#cloudStatus').textContent(),'同步等待较久');assert.match(await a.locator('#cloudState').textContent(),/检查云端版本/);
+    assert.equal(await a.locator('#cloudReopen').isVisible(),true);assert.equal(await a.locator('#cloudReopen').isEnabled(),true);
     assert.equal(await a.locator('#reader').evaluate(el=>el.inert),false);await a.screenshot({path:path.join(out,'stalled-cloud-stage.png')});
     await a.evaluate(()=>{document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('pageshow'));window.dispatchEvent(new Event('focus'));});
     await a.locator('#cloudNow').click();assert.equal(await a.evaluate(()=>window.__qaStalledPulls),1);
     await a.evaluate(async()=>{__qaAdapter.pull=window.__qaOriginalPull;window.__qaRejectPull(Object.assign(Error('Injected SDK deadline'),{code:'sync-timeout'}));await window.__qaStalledRun;});
-    await phase(a,'offline');assert.match(await a.locator('#cloudState').textContent(),/本机记录已保留/);
+    await phase(a,'timeout');assert.match(await a.locator('#cloudState').textContent(),/等待云端确认超时/);
     const failed=await a.evaluate(()=>StudyState.readSync());assert.deepEqual(failed.state,before.state);assert.equal(failed.pending.length,before.pending.length);assert.equal(failed.meta.flight,before.meta.flight);
     await a.locator('#cloudNow').click();await phase(a,'synced');assert.equal(await a.locator('#reader').evaluate(el=>el.inert),false);await a.screenshot({path:path.join(out,'stalled-cloud-recovered.png')});await a.locator('#cloudDialog .close-dialog').click();
+  });
+  await test('new local commits withdraw the previous cloud success while preserving the actual local commit',async()=>{
+    await settle(a);await menuClick(a,'cloudButton');
+    const prior=await a.evaluate(()=>StudyCloudAPI.status().lastConfirmedAt);
+    await a.evaluate(async()=>{const l=structuredClone(StudyState.get('learning'));l.drafts['trust-new']={own:'new local record awaiting receipt',reason:'',categories:[]};StudyState.set('learning',l);await StudyState.flush();});
+    assert.equal(await a.evaluate(()=>StudyCloudAPI.status().phase),'pending');assert.equal(await a.locator('#cloudStatus').textContent(),'等待同步');assert.equal(await a.locator('#cloudLocalState').textContent(),'本机已保存');
+    assert.equal(await a.evaluate(()=>StudyCloudAPI.status().lastConfirmedAt),prior);
+    await a.waitForFunction(()=>document.getElementById('cloudQueue').textContent.includes('1 次'));await a.screenshot({path:path.join(out,'local-saved-cloud-pending-desktop.png')});
+    await settle(a);await a.waitForFunction(()=>document.getElementById('cloudStatus').textContent==='已同步');assert.match(await a.locator('#cloudQueue').textContent(),/0 次/);
+  });
+  await test('real IndexedDB transaction failure never shows saved or cloud success and repair commits the retained draft',async()=>{
+    await settle(a);const before=await a.evaluate(()=>StudyState.readSync()),savedAt=await a.evaluate(()=>StudyState.status().savedAt);
+    await a.evaluate(async()=>{const db=StudyState.database();window.__qaOriginalTransaction=db.transaction.bind(db);window.__qaFailSave=true;db.transaction=(names,mode)=>{const tx=__qaOriginalTransaction(names,mode);if(mode==='readwrite'&&__qaFailSave)queueMicrotask(()=>tx.abort());return tx;};
+      const l=structuredClone(StudyState.get('learning'));l.drafts['trust-unsaved']={own:'recoverable unsaved draft',reason:'',categories:[]};StudyState.set('learning',l);try{await StudyState.flush();}catch{};
+    });
+    assert.equal(await a.evaluate(()=>StudyState.status().phase),'error');assert.equal(await a.evaluate(()=>StudyState.status().savedAt),savedAt);assert.equal((await a.evaluate(()=>StudyState.readSync())).state.learning.drafts['trust-unsaved'],undefined);
+    assert.match(await a.locator('#cloudLocalState').textContent(),/本机未保存/);assert.notEqual(await a.locator('#cloudStatus').textContent(),'已同步');assert.match(await a.locator('#cloudQueue').textContent(),/未提交修改/);
+    await a.evaluate(()=>StudyCloudAPI.syncNow());await phase(a,'local-pending');assert.equal(await a.locator('#cloudRepairLocal').isVisible(),true);await a.screenshot({path:path.join(out,'local-write-failure-desktop.png')});
+    await a.evaluate(()=>window.__qaFailSave=false);await a.locator('#cloudRepairLocal').click();await settle(a);assert.equal((await a.evaluate(()=>StudyState.readSync())).state.learning.drafts['trust-unsaved'].own,'recoverable unsaved draft');assert.deepEqual((await a.evaluate(()=>StudyState.readSync())).state.learning.notes,before.state.learning.notes);
+    assert.equal(await a.locator('#cloudLocalState').textContent(),'本机已保存');await a.waitForFunction(()=>document.getElementById('cloudStatus').textContent==='已同步');
+  });
+  await test('quota and permission errors keep original durable flights, pause retry and expose actionable recovery',async()=>{
+    await settle(b);await menuClick(b,'cloudButton');
+    for(const [code,name] of [['resource-exhausted','云端配额受限'],['permission-denied','同步异常']]){
+      await b.evaluate(async code=>{window.__qaGoodCommit=__qaAdapter.commit;__qaAdapter.commit=()=>Promise.reject(Object.assign(Error('Synthetic '+code),{code}));const l=structuredClone(StudyState.get('learning'));l.drafts['trust-'+code]={own:'retained '+code,reason:'',categories:[]};StudyState.set('learning',l);await StudyState.flush();await StudyCloudAPI.syncNow();},code);
+      assert.equal(await b.locator('#cloudStatus').textContent(),name);assert.equal(await b.locator('#cloudLocalState').textContent(),'本机已保存');assert.match(await b.locator('#cloudRecoveryHint').textContent(),/自动重试已暂停/);
+      const flight=(await b.evaluate(()=>StudyState.readSync())).meta.flight.operationId;assert.equal(await b.evaluate(()=>StudyCloudAPI.diagnostics().nextRetryAt),null);
+      if(code==='resource-exhausted')await b.screenshot({path:path.join(out,'quota-recovery-phone.png')});
+      await b.evaluate(()=>__qaAdapter.commit=__qaGoodCommit);await b.locator('#cloudNow').click();await settle(b);assert.ok(cloud.receipts.has(flight));assert.equal((await b.evaluate(()=>StudyState.readSync())).meta.flight,undefined);await settle(a);
+    }
+  });
+  await test('expired credentials can reauthenticate without clearing private data or replacing the pending operation',async()=>{
+    await b.evaluate(async()=>{window.__qaGoodCommit=__qaAdapter.commit;__qaAdapter.commit=()=>Promise.reject(Object.assign(Error('Synthetic expired credentials'),{code:'unauthenticated'}));const l=structuredClone(StudyState.get('learning'));l.drafts['trust-expired']={own:'kept after reauthentication',reason:'',categories:[]};StudyState.set('learning',l);await StudyState.flush();await StudyCloudAPI.syncNow();});
+    await phase(b,'auth-required');assert.equal(await b.locator('#cloudRelogin').isVisible(),true);const before=await b.evaluate(()=>StudyState.readSync()),id=before.meta.flight.operationId;
+    await b.evaluate(()=>__qaAdapter.commit=__qaGoodCommit);await b.locator('#cloudRelogin').click();await phase(b,'synced');const after=await b.evaluate(()=>StudyState.readSync());assert.equal(after.meta.boundUid,'owner');assert.equal(after.state.learning.drafts['trust-expired'].own,'kept after reauthentication');assert.equal(after.packs.filter(p=>p.source==='local').length,before.packs.filter(p=>p.source==='local').length);assert.ok(cloud.receipts.has(id));await settle(a);
+  });
+  await test('lightweight diagnostics and status panel do not load full sync snapshots or disclose personal content',async()=>{
+    await b.evaluate(()=>{window.__qaReadSync=StudyState.readSync;StudyState.readSync=()=>{throw Error('status must not load full snapshot');};});
+    await b.locator('#cloudDialog summary').first().click();const download=b.waitForEvent('download');await b.locator('#cloudDiagnosticExport').click();const file=await (await download).path(),report=JSON.parse(fs.readFileSync(file,'utf8'));
+    assert.equal(report.appVersion,'20261014-v32');assert.equal(report.local.durable,true);assert.equal(report.local.dirty,false);assert.equal('uid' in report,false);assert.equal(JSON.stringify(report).includes('kept after reauthentication'),false);assert.equal(JSON.stringify(report).includes('synthetic-owner'),false);
+    await b.evaluate(()=>StudyState.readSync=window.__qaReadSync);await b.locator('#cloudDialog summary').first().click();
+    await b.setViewportSize({width:810,height:1080});await b.screenshot({path:path.join(out,'saved-cloud-confirmed-tablet.png')});await b.setViewportSize({width:428,height:926});
+    assert.match(await b.title(),/English Study/);assert.equal(await b.locator('#reader').evaluate(el=>el.inert),false);
+    const box=await b.locator('#cloudDialog').evaluate(d=>({overflow:d.scrollWidth-d.clientWidth,width:d.getBoundingClientRect().width}));assert.ok(box.overflow<=1);await b.screenshot({path:path.join(out,'saved-cloud-confirmed-phone.png')});
+  });
+  await test('a stalled UI consumer after a committed cloud update can safely reopen the page without discarding the snapshot',async()=>{
+    await settle(a);await settle(b);await menuClick(a,'cloudButton');
+    await a.evaluate(()=>{StudyState.onReload(detail=>detail.cloud?new Promise(()=>{}):undefined);});
+    await b.evaluate(async()=>{const l=structuredClone(StudyState.get('learning'));l.drafts['trust-hung-consumer']={own:'durable cloud update despite hung UI consumer',reason:'',categories:[]};StudyState.set('learning',l);await StudyState.flush();});await settle(b);
+    await a.waitForFunction(()=>StudyState.status().pendingReload&&document.getElementById('reader').inert,null,{timeout:20000});
+    assert.equal(await a.locator('#cloudReopen').isEnabled(),true);const before=await a.evaluate(()=>StudyState.readSync());assert.equal(before.state.learning.drafts['trust-hung-consumer'].own,'durable cloud update despite hung UI consumer');assert.equal(await a.evaluate(()=>StudyState.status().dirty),false);
+    await a.locator('#cloudReopen').click();await ready(a);await phase(a,'synced');assert.equal(await a.locator('#reader').evaluate(el=>el.inert),false);const after=await a.evaluate(()=>StudyState.readSync());assert.deepEqual(after.state.learning.notes,before.state.learning.notes);assert.equal(after.state.learning.drafts['trust-hung-consumer'].own,'durable cloud update despite hung UI consumer');
+    await a.setViewportSize({width:2560,height:1600});await menuClick(a,'cloudButton');await a.screenshot({path:path.join(out,'confirmed-desktop-2560.png')});
+  });
+  await test('failed login component bootstrap has an enabled connection retry without blocking local reading',async()=>{
+    const context=await browser.newContext({viewport:{width:1536,height:1024},serviceWorkers:'block'}),p=await context.newPage();await watch(p,'bootstrap retry');
+    await p.goto(origin+'/__qa/seed');await p.evaluate(()=>sessionStorage.setItem('qa-bootstrap-fail','1'));await p.goto(origin+'/');
+    await p.waitForFunction(()=>window.StudyReaderAPI&&StudyState.status().phase==='saved');await menuClick(p,'cloudButton');await p.waitForFunction(()=>document.getElementById('cloudNow').textContent==='重试连接'&&!document.getElementById('cloudNow').disabled);
+    assert.equal(await p.locator('#cloudLocalState').textContent(),'本机已保存');assert.match(await p.locator('#cloudState').textContent(),/暂不可达/);const before=await p.evaluate(()=>StudyState.get('learning'));
+    await p.evaluate(()=>sessionStorage.removeItem('qa-bootstrap-fail'));await p.locator('#cloudNow').click();await ready(p);assert.equal(await p.locator('#cloudLogin').isEnabled(),true);assert.deepEqual(await p.evaluate(()=>StudyState.get('learning')),before);await p.screenshot({path:path.join(out,'bootstrap-retry-desktop.png')});await context.close();
   });
   assert.deepEqual(errors,[]);await desktop.close();await mobile.close();
   fs.writeFileSync(path.join(out,'cloud-browser-results.json'),JSON.stringify({browser:browser.version(),backend:'synthetic HTTP adapter, not Google OAuth/Firestore',origin,checks,errors,cloud:{version:cloud.version,writes:cloud.writes,receiptCount:cloud.receipts.size}},null,2));console.log(JSON.stringify({checks,errors,version:cloud.version},null,2));

@@ -213,3 +213,10 @@
 }
 @media(prefers-reduced-motion:reduce){.reader-v2 .settings-dialog :is(input,textarea,select,summary)::before,.reader-v2 .settings-dialog :is(input,textarea,select,.panel-toggle-track),.reader-v2 .settings-dialog .panel-toggle-track::after{transition:none}}
 @media(forced-colors:active){.reader-v2 .settings-dialog select{appearance:auto;background-image:none}.reader-v2 .settings-dialog details>summary::before{border:1px solid currentColor}.reader-v2 #toolsDialog .tabs button[aria-selected=true]{outline:1px solid currentColor}.reader-v2 .settings-dialog .panel-toggle{width:auto;height:auto;flex-basis:auto}.reader-v2 .settings-dialog .panel-toggle input[type=checkbox],.reader-v2 #settingsDialog .panel-toggle input[type=checkbox]{position:static;opacity:1;width:20px;height:20px}.reader-v2 .panel-toggle-track{display:none}}
+
+/* Local commit and cloud receipt stay separate inside the existing settings panel. */
+.sync-evidence{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:20px 0;padding:18px 0;border-block:1px solid var(--border)}
+.sync-evidence section{min-width:0}.sync-evidence h3,.sync-recovery h3{font-size:14px;margin:0 0 8px}.sync-evidence p{overflow-wrap:anywhere;margin:6px 0}
+.sync-recovery{margin:18px 0;padding:16px;border:1px solid var(--border);border-radius:12px}.sync-recovery p{overflow-wrap:anywhere}
+@media(max-width:540px){.sync-evidence{grid-template-columns:1fr;gap:16px}.sync-recovery{padding:12px}}
+.save-status[data-phase=loading] .save-dot{background:#c29352}
