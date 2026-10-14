@@ -60,6 +60,21 @@
   const items=all.slice(0,Math.max(1,Math.min(10,Number(limit)||5))).map(i=>{i=clone(i);for(let j=i.choices.length-1;j>0;j--){const k=Math.min(j,Math.floor(random()*(j+1)));[i.choices[k],i.choices[j]]=[i.choices[j],i.choices[k]];}return i;});
   return items.length?{id:'sense-'+now+'-'+random().toString(36).slice(2,10),at:new Date(now).toISOString(),items,index:0,draft:{choice:'',confidence:'unsure'}}:null;
  }
- function current(data,extra,item){const a=data.articles.find(a=>a.key===item.articleKey);if(!a||a.sourceSignature!==item.contentVersion||!a.plain[item.paragraph]?.includes(item.context))return false;const rows=C.catalogRows(extra.studyLexicons);return item.choices.every(b=>rows.some(r=>C.identity(r)===C.identity(b)&&r.catalogId===b.catalogId&&r.fingerprint===b.fingerprint));}
- return {preferences,organize,validate,searchIndex,search,snippet,locate,candidates,session,current};
+ function current(data,extra,item){const a=data.articles.find(a=>a.key===item.articleKey);if(!a||a.sourceSignature!==item.contentVersion||!a.plain[item.paragraph]?.includes(item.context))return false;const rows=C.catalogRows(extra.studyLexicons),association=C.association({...item,id:item.sourceRecordId},extra,rows);if(!['exact','manual'].includes(association.status)||!association.binding||C.identity(association.binding)!==item.answer)return false;return item.choices.every(b=>(rows.byWord.get(lower(b.word))||[]).some(r=>C.identity(r)===C.identity(b)&&r.catalogId===b.catalogId&&r.fingerprint===b.fingerprint));}
+ function coverage(data,learning={},extra={}){
+  const source=C.catalogRows(extra.studyLexicons),key=b=>JSON.stringify([b.catalogId,C.identity(b)]),rows=source.map(b=>({...b,id:key(b),contexts:[],history:[],status:'missing',searchText:lower([b.word,b.pos,b.definition,b.wordId,b.senseId,b.dictionaryId,b.namespace].join(' '))})),byId=new Map(rows.map(r=>[r.id,r])),pending=[],outside=[];
+  const seen=new Set(),contextIds=new Map(),historyIds=new Map();
+  function attach(record,historical=false){const a=C.association(record,extra,source),row=a.binding&&['exact','manual'].includes(a.status)?byId.get(key(a.binding)):null;
+   if(row){const ids=historical?historyIds:contextIds;if(!ids.has(row.id))ids.set(row.id,new Set());if(!ids.get(row.id).has(record.id)){ids.get(row.id).add(record.id);row[historical?'history':'contexts'].push(record);}return;}
+   if(historical)return;const targets=source.byWord.get(lower(record.word))||[];(targets.length?pending:outside).push({...record,reason:a.reason});
+  }
+  for(const [wordKey,w]of Object.entries(data.words))for(const u of w.uses){const r=L.usage(data,wordKey,u);if(r&&!seen.has(r.id)){seen.add(r.id);attach(r);}}
+  for(const r of C.pointRecords(data,learning,extra)){if(!L.locate(data,r))attach(r,true);}
+  for(const r of rows)r.status=r.contexts.length?'current':r.history.length?'history':'missing';
+  const wordKey=r=>JSON.stringify([r.namespace,r.wordId]),current=rows.filter(r=>r.status==='current').length,history=rows.filter(r=>r.status==='history').length;
+  return {rows,pending,outside,summary:{words:new Set(rows.map(wordKey)).size,senses:rows.length,current,history,missing:rows.length-current-history,contexts:seen.size,pending:pending.length,outside:outside.length},catalogs:Object.values(extra.studyLexicons||{}).map(c=>({id:c.id,title:c.title,namespace:c.namespace,fingerprint:c.fingerprint}))};
+ }
+ function coverageFilter(report,{query='',catalog='all',status='all',limit=50}={}){const q=lower(query).split(' ').filter(Boolean),matched=report.rows.filter(r=>(catalog==='all'||r.catalogId===catalog)&&(status==='all'||r.status===status||status==='gap'&&r.status!=='current')&&q.every(t=>r.searchText.includes(t)));return {total:matched.length,rows:matched.slice(0,limit)};}
+ function coverageExport(report,now=Date.now()){return {format:'english-study-coverage-gaps',version:1,createdAt:new Date(now).toISOString(),note:'按当前文章与原义项唯一关联统计；不表示词义人工核验或学习掌握。仅历史快照不算当前覆盖。',catalogs:clone(report.catalogs),summary:clone(report.summary),missing:report.rows.filter(r=>r.status!=='current').map(({word,pos,definition,catalogId,namespace,wordId,senseId,dictionaryId,status})=>({word,pos,definition,catalogId,namespace,wordId,senseId,dictionaryId,status}))};}
+ return {preferences,organize,validate,searchIndex,search,snippet,locate,candidates,session,current,coverage,coverageFilter,coverageExport};
 });
