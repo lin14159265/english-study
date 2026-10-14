@@ -3,7 +3,7 @@ window.StudyLibrary = (() => {
   'use strict';
   const $ = id => document.getElementById(id), escape = window.StudyPack.escape;
   const DB = 'english-study.packages.v1';
-  let db = null, original, data, hooks, draft = null, busy = false, removePending = null;
+  let db = null, original, data, hooks, draft = null, busy = false, removePending = null, bookSummaries=[];
   const local = new Map(), published = new Map();
   let status = '正在检查已发布资料…', storageStatus = '', librarySignature = null, libraryToken = null;
   function openDB() {
@@ -55,12 +55,14 @@ window.StudyLibrary = (() => {
     const articles = revised ? mapped.articles.map((a,i)=>StudyPack.preserveLegacyHints(a,original.articles[i],mapped.words)) : original.articles.map((a,i)=>({...a,key:`original/${a.id}`,batch:'original',batchTitle:'原始 1000 词资料',date:source.date,topics:[],sentenceAnalyses:mapped.articles[i].sentenceAnalyses,questions:mapped.articles[i].questions,sourceSignature:mapped.articles[i].sourceSignature,quizSignature:mapped.articles[i].quizSignature}));
     const words = Object.assign(Object.create(null),revised?mapped.words:original.words);
     if (words.desirability && !words.desirability.uses.length) words.desirability = {...words.desirability,omission:'原词表“愿望，欲求”释义存疑，不能直接当作 desire 使用。'};
-    effective().filter(r=>r.payload.id!=='original-baseline').forEach(record => {
+    const records=effective().filter(r=>r.payload.id!=='original-baseline');
+    records.forEach(record => {
       const pack = record.compiled, offset = articles.length;
       pack.articles.forEach(a=>articles.push({...a,id:a.id+offset}));
       Object.entries(pack.words).forEach(([k,w])=>{ words[k] = {...w,uses:w.uses.map(u=>({...u,article:u.article+offset}))}; });
     });
     data.articles = articles; data.words = words;
+    bookSummaries=[{id:'original',title:articles[0].batchTitle,date:source.date,source:'original',revised:revised,words:(edit?.payload||source).words.length},...records.map(r=>({id:r.payload.id,title:r.payload.title,date:r.payload.date,source:r.source,revised:!!r.revised,words:r.payload.words.length}))];
     librarySignature=null;libraryToken=null;
   }
   function model(key) {
@@ -116,7 +118,7 @@ window.StudyLibrary = (() => {
     $('storageStatus').textContent = storageStatus;
     $('storageStatus').hidden = !storageStatus;
     $('refreshPublished').disabled = busy;
-    $('packageList').innerHTML = entries().map(r=>`<div class="package-card"><div><h4>${escape(r.title)}</h4><p>${escape(r.date)} · ${r.articles} 篇 · ${r.used}/${r.words} 词覆盖</p><small>${r.source==='local'?(r.override?'本机版本 · 同 ID 已有发布':'本机导入'):'已发布 · 所有设备可读'}</small></div><div class="package-actions"><button class="text-button" data-open-pack="${escape(r.id)}">阅读</button><button class="text-button" data-export-pack="${escape(r.id)}">导出</button>${r.source==='local'?`<button class="text-button" data-remove-pack="${escape(r.id)}">${removePending===r.id?'确认移除':'移除本机版本'}</button>`:''}</div></div>`).join('') || '<p class="manager-empty">还没有新增资料。原始 25 篇文章一直可读。</p>';
+    $('packageList').innerHTML = entries().map(r=>`<div class="package-card" data-package-id="${escape(r.id)}"><div><h4>${escape(r.title)}</h4><p>${escape(r.date)} · ${r.articles} 篇 · ${r.used}/${r.words} 词覆盖</p><small>${r.source==='local'?(r.override?'本机版本 · 同 ID 已有发布':'本机导入'):'已发布 · 所有设备可读'}</small></div><div class="package-actions"><button class="text-button" data-open-pack="${escape(r.id)}">阅读</button><button class="text-button" data-export-pack="${escape(r.id)}">导出</button>${r.source==='local'?`<button class="text-button" data-remove-pack="${escape(r.id)}">${removePending===r.id?'确认移除':'移除本机版本'}</button>`:''}</div></div>`).join('') || '<p class="manager-empty">还没有新增资料。原始 25 篇文章一直可读。</p>';
   }
   function changed() { hooks?.beforeChange(); rebuild(); libraryToken=window.StudyState?.libraryVersion?.()||null; hooks?.onChange(); renderManager(); }
   async function fetchJSON(url) {
@@ -204,5 +206,5 @@ window.StudyLibrary = (() => {
     });
     renderManager(); refresh();
   }
-  return {open,reload,attach,entries,model,saveRevision,resetRevision,payloads:()=>rawEffective().map(r=>StudyWorkspaceCore.clone(r.payload))};
+  return {open,reload,attach,entries,books:()=>bookSummaries.map(b=>({...b})),model,saveRevision,resetRevision,payloads:()=>rawEffective().map(r=>StudyWorkspaceCore.clone(r.payload))};
 })();
